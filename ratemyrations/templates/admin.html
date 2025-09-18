@@ -82,9 +82,57 @@
             font-weight: bold;
             color: #2c3e50;
         }
-        .stat-label {
-            color: #666;
-            font-size: 14px;
+        .ban-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 4px;
+        }
+        .ban-btn:hover {
+            background: #c0392b;
+        }
+        .unban-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 4px;
+        }
+        .unban-btn:hover {
+            background: #229954;
+        }
+        .nickname-input {
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 12px;
+            width: 100px;
+        }
+        .nickname-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 4px;
+        }
+        .nickname-btn:hover {
+            background: #2980b9;
+        }
+        .banned-user {
+            background-color: #ffebee;
+        }
+        .banned-user td {
+            color: #c62828;
         }
     </style>
 </head>
@@ -122,13 +170,15 @@
                     <th>Meal</th>
                     <th>Rating</th>
                     <th>User ID</th>
+                    <th>Nickname</th>
+                    <th>Status</th>
                     <th>Timestamp</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="ratings-tbody">
                 <tr>
-                    <td colspan="8" class="no-ratings">Loading ratings...</td>
+                    <td colspan="10" class="no-ratings">Loading ratings...</td>
                 </tr>
             </tbody>
         </table>
@@ -169,23 +219,40 @@
             const tbody = document.getElementById('ratings-tbody');
             
             if (ratings.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="no-ratings">No ratings found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="no-ratings">No ratings found</td></tr>';
                 return;
             }
 
             tbody.innerHTML = ratings.map(rating => `
-                <tr>
+                <tr class="${rating.is_banned ? 'banned-user' : ''}">
                     <td>${rating.food_name}</td>
                     <td>${rating.dining_hall}</td>
                     <td>${rating.station}</td>
                     <td>${rating.meal}</td>
                     <td>${renderStars(rating.rating)} (${rating.rating})</td>
                     <td><code>${rating.user_id || 'N/A'}</code></td>
+                    <td>
+                        <input type="text" class="nickname-input" value="${rating.nickname || ''}" 
+                               placeholder="Nickname" id="nickname-${rating.user_id}">
+                        <button class="nickname-btn" onclick="updateNickname('${rating.user_id}')">
+                            Set
+                        </button>
+                    </td>
+                    <td>
+                        ${rating.is_banned ? 
+                            `<span style="color: #c62828;">BANNED</span>` : 
+                            `<span style="color: #27ae60;">Active</span>`
+                        }
+                    </td>
                     <td>${formatTimestamp(rating.timestamp)}</td>
                     <td>
                         <button class="delete-btn" onclick="deleteRating(${rating.id})">
                             Delete
                         </button>
+                        ${rating.is_banned ? 
+                            `<button class="unban-btn" onclick="unbanUser('${rating.user_id}')">Unban</button>` :
+                            `<button class="ban-btn" onclick="banUser('${rating.user_id}')">Ban</button>`
+                        }
                     </td>
                 </tr>
             `).join('');
@@ -231,23 +298,105 @@
             });
         }
 
-        // Load ratings
-        fetch(`/api/admin/ratings?token=${token}`)
+        function updateNickname(userId) {
+            const nicknameInput = document.getElementById(`nickname-${userId}`);
+            const nickname = nicknameInput.value.trim();
+            
+            fetch('/api/admin/update-nickname', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Token': token
+                },
+                body: JSON.stringify({ user_id: userId, nickname: nickname })
+            })
             .then(response => response.json())
-            .then(ratings => {
-                allRatings = ratings;
-                renderRatings(ratings);
-                updateStats(ratings);
+            .then(data => {
+                if (data.status === 'success') {
+                    // Reload ratings to show updated nickname
+                    loadRatings();
+                } else {
+                    alert('Error updating nickname: ' + data.error);
+                }
             })
             .catch(error => {
-                document.getElementById('ratings-tbody').innerHTML = 
-                    '<tr><td colspan="8" class="no-ratings">Error loading ratings</td></tr>';
+                alert('Error updating nickname: ' + error.message);
             });
+        }
+
+        function banUser(userId) {
+            const banReason = prompt('Enter ban reason (optional):');
+            if (banReason === null) return; // User cancelled
+            
+            fetch('/api/admin/ban-user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Token': token
+                },
+                body: JSON.stringify({ user_id: userId, ban_reason: banReason })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadRatings();
+                } else {
+                    alert('Error banning user: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error banning user: ' + error.message);
+            });
+        }
+
+        function unbanUser(userId) {
+            if (!confirm('Are you sure you want to unban this user?')) {
+                return;
+            }
+            
+            fetch('/api/admin/unban-user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Token': token
+                },
+                body: JSON.stringify({ user_id: userId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadRatings();
+                } else {
+                    alert('Error unbanning user: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error unbanning user: ' + error.message);
+            });
+        }
+
+        function loadRatings() {
+            fetch(`/api/admin/ratings?token=${token}`)
+                .then(response => response.json())
+                .then(ratings => {
+                    allRatings = ratings;
+                    const searchTerm = document.getElementById('search-box').value;
+                    filterRatings(searchTerm);
+                    updateStats(ratings);
+                })
+                .catch(error => {
+                    document.getElementById('ratings-tbody').innerHTML = 
+                        '<tr><td colspan="10" class="no-ratings">Error loading ratings</td></tr>';
+                });
+        }
 
         // Search functionality
         document.getElementById('search-box').addEventListener('input', function() {
             filterRatings(this.value);
         });
+
+        // Load ratings on page load
+        loadRatings();
     </script>
 </body>
 </html>

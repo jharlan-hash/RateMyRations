@@ -51,6 +51,19 @@ def create_tables():
         CREATE INDEX IF NOT EXISTS idx_foods_unique ON foods (name, station, dining_hall, meal)
     """
     )
+    
+    # User management table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            nickname TEXT,
+            is_banned BOOLEAN DEFAULT FALSE,
+            ban_reason TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -263,9 +276,11 @@ def get_all_ratings():
     
     c.execute("""
         SELECT r.id, r.user_id, r.rating, r.timestamp,
-               f.name, f.station, f.dining_hall, f.meal
+               f.name, f.station, f.dining_hall, f.meal,
+               u.nickname, u.is_banned
         FROM ratings r
         JOIN foods f ON r.food_id = f.id
+        LEFT JOIN users u ON r.user_id = u.user_id
         ORDER BY r.timestamp DESC
     """)
     
@@ -279,11 +294,95 @@ def get_all_ratings():
             "food_name": row[4],
             "station": row[5],
             "dining_hall": row[6],
-            "meal": row[7]
+            "meal": row[7],
+            "nickname": row[8],
+            "is_banned": bool(row[9]) if row[9] is not None else False
         })
     
     conn.close()
     return ratings
+
+
+def update_user_nickname(user_id, nickname):
+    """Updates or creates a user nickname."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    for _ in range(3):
+        try:
+            c.execute("""
+                INSERT OR REPLACE INTO users (user_id, nickname, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+            """, (user_id, nickname))
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                import time; time.sleep(0.1)
+                continue
+            else:
+                raise
+    
+    conn.commit()
+    conn.close()
+
+
+def ban_user(user_id, ban_reason=""):
+    """Bans a user."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    for _ in range(3):
+        try:
+            c.execute("""
+                INSERT OR REPLACE INTO users (user_id, is_banned, ban_reason, updated_at)
+                VALUES (?, TRUE, ?, CURRENT_TIMESTAMP)
+            """, (user_id, ban_reason))
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                import time; time.sleep(0.1)
+                continue
+            else:
+                raise
+    
+    conn.commit()
+    conn.close()
+
+
+def unban_user(user_id):
+    """Unbans a user."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    for _ in range(3):
+        try:
+            c.execute("""
+                UPDATE users 
+                SET is_banned = FALSE, ban_reason = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            """, (user_id,))
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                import time; time.sleep(0.1)
+                continue
+            else:
+                raise
+    
+    conn.commit()
+    conn.close()
+
+
+def is_user_banned(user_id):
+    """Checks if a user is banned."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    c.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,))
+    result = c.fetchone()
+    conn.close()
+    
+    return bool(result[0]) if result else False
 
 
 def delete_rating_by_id(rating_id):

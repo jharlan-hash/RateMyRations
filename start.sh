@@ -9,6 +9,8 @@ echo "Starting RateMyRations..."
 
 # Start Gunicorn in background
 echo "Starting Gunicorn with 4 workers..."
+export RATE_LIMIT_STORAGE_URI=redis://127.0.0.1:6379/0
+export ADMIN_TOKEN=mega_gooner
 gunicorn -w 4 -b 0.0.0.0:8000 ratemyrations.wsgi:application &
 GUNICORN_PID=$!
 

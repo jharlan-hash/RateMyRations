@@ -295,6 +295,15 @@ document.addEventListener("DOMContentLoaded", function() {
 
                                 stationTitle.addEventListener("click", function() {
                                     const isActive = menuList.classList.toggle("active");
+                                    
+                                    // Close sibling stations at same level (within the same meal)
+                                    const siblingStations = mealContent.querySelectorAll('.station ul');
+                                    siblingStations.forEach(sib => {
+                                        if (sib !== menuList) {
+                                            sib.classList.remove('active');
+                                        }
+                                    });
+                                    
                                     if (!isActive) {
                                         const innerActive = menuList.querySelectorAll('.active');
                                         innerActive.forEach(el => el.classList.remove('active'));
@@ -327,6 +336,18 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     diningHallTitle.addEventListener("click", function() {
                         const isActive = diningHallContent.classList.toggle("active");
+                        
+                        // Close sibling dining halls at same level
+                        const siblingHalls = document.querySelectorAll('.dining-hall .dining-hall-content');
+                        siblingHalls.forEach(sib => {
+                            if (sib !== diningHallContent) {
+                                sib.classList.remove('active');
+                                // Also close all nested active elements
+                                const innerActive = sib.querySelectorAll('.active');
+                                innerActive.forEach(el => el.classList.remove('active'));
+                            }
+                        });
+                        
                         if (!isActive) {
                             const innerActive = diningHallContent.querySelectorAll('.active');
                             innerActive.forEach(el => el.classList.remove('active'));

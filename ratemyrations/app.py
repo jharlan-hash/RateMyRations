@@ -141,6 +141,56 @@ def get_admin_ratings():
     return jsonify(ratings)
 
 
+@app.route("/api/admin/update-nickname", methods=["POST"])
+def update_nickname():
+    token = request.headers.get("X-Admin-Token")
+    if not token or token != config.ADMIN_TOKEN:
+        return jsonify({"error": "Forbidden"}), 403
+    
+    data = request.get_json()
+    user_id = data.get("user_id")
+    nickname = data.get("nickname")
+    
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    
+    database.update_user_nickname(user_id, nickname)
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/admin/ban-user", methods=["POST"])
+def ban_user():
+    token = request.headers.get("X-Admin-Token")
+    if not token or token != config.ADMIN_TOKEN:
+        return jsonify({"error": "Forbidden"}), 403
+    
+    data = request.get_json()
+    user_id = data.get("user_id")
+    ban_reason = data.get("ban_reason", "")
+    
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    
+    database.ban_user(user_id, ban_reason)
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/admin/unban-user", methods=["POST"])
+def unban_user():
+    token = request.headers.get("X-Admin-Token")
+    if not token or token != config.ADMIN_TOKEN:
+        return jsonify({"error": "Forbidden"}), 403
+    
+    data = request.get_json()
+    user_id = data.get("user_id")
+    
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    
+    database.unban_user(user_id)
+    return jsonify({"status": "success"})
+
+
 @app.route("/api/admin/delete-rating", methods=["POST"])
 def delete_admin_rating():
     token = request.headers.get("X-Admin-Token")
@@ -215,6 +265,11 @@ def internal_error_handler(e):
 def rate_route():
     data = request.get_json()
     user_id = data.get("user_id")
+    
+    # Check if user is banned
+    if user_id and database.is_user_banned(user_id):
+        return jsonify({"error": "User is banned"}), 403
+    
     database.add_rating(data["food_id"], user_id, data["rating"])
     return jsonify({"status": "success"})
 
