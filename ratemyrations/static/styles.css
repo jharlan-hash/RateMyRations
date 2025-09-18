@@ -1,4 +1,3 @@
-
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
@@ -45,7 +44,8 @@ h1 {
 .dining-hall-content.active,
 .meal-content.active,
 .station ul.active {
-    max-height: 1000px; /* A large enough value to show all content */
+    max-height: 100vh; /* Use viewport height for max-height */
+    overflow-y: auto;
     transition: max-height 0.5s ease-in;
 }
 
@@ -76,6 +76,7 @@ li {
     padding: 8px 0;
     border-bottom: 1px solid #ecf0f1;
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     animation: fadeIn 0.5s ease-in-out;
@@ -130,6 +131,7 @@ li {
 .star-rating-container {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .stars-outer {

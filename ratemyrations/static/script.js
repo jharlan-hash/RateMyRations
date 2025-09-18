@@ -1,3 +1,4 @@
+
 document.addEventListener("DOMContentLoaded", function() {
     const dateInput = document.getElementById("menu-date");
     const today = new Date();
@@ -190,7 +191,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                     const listItem = document.createElement("li");
                                     listItem.textContent = item.name;
 
-                                    const foodRatingKey = `${item.name}_${station}_${diningHall}_${meal}`;
+                                    const foodRatingKey = `${item.name}_${station}_${diningHall}_${item.meal}`;
                                     const foodRating = ratings.foods[foodRatingKey] ? ratings.foods[foodRatingKey].avg_rating : 0;
                                     listItem.appendChild(renderStars(foodRating, item.id));
                                     

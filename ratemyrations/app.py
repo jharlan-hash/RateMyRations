@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify, request, render_template
 from datetime import datetime, timedelta
 import urllib.request
@@ -41,7 +40,7 @@ def get_menu(dining_hall_name, school, meal, date):
                                     
                                     food_name = item["food"]["name"]
                                     food_id = database.add_food(food_name, station_name, dining_hall_name, meal)
-                                    categorized_menu[station_name].append({"id": food_id, "name": food_name})
+                                    categorized_menu[station_name].append({"id": food_id, "name": food_name, "meal": meal})
 
                         if not categorized_menu:
                             print(f"Menu not found for {dining_hall_name} - {meal.capitalize()} on {date.strftime('%Y-%m-%d')}")
