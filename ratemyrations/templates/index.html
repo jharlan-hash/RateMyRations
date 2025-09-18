@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UIowa RateMyRations</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>RateMyRations - UIowa</h1>
+        <div class="date-picker">
+            <label for="menu-date">Select a date:</label>
+            <input type="date" id="menu-date">
+        </div>
+        <div id="menus-container"></div>
+        <button id="delete-ratings-btn">Delete All Ratings (Debug)</button>
+    </div>
+
+    <template id="star-rating-template">
+        <div class="star-rating">
+            <span class="star" data-value="1">&#9733;</span>
+            <span class="star" data-value="2">&#9733;</span>
+            <span class="star" data-value="3">&#9733;</span>
+            <span class="star" data-value="4">&#9733;</span>
+            <span class="star" data-value="5">&#9733;</span>
+        </div>
+    </template>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
