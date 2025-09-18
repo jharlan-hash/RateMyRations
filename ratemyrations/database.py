@@ -25,6 +25,9 @@ def create_tables():
             FOREIGN KEY (food_id) REFERENCES foods (id)
         )
     """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ratings_food_id ON ratings (food_id)
+    """)
     conn.commit()
     conn.close()
 
@@ -93,12 +96,22 @@ def get_ratings():
     """)
     dining_hall_ratings = {row[0]: {"avg_rating": row[1], "rating_count": row[2]} for row in c.fetchall()}
 
+    # Meal ratings
+    c.execute("""
+        SELECT f.dining_hall, f.meal, AVG(r.rating), COUNT(r.rating)
+        FROM foods f
+        JOIN ratings r ON f.id = r.food_id
+        GROUP BY f.dining_hall, f.meal
+    """)
+    meal_ratings = {f"{row[0]}_{row[1]}": {"avg_rating": row[2], "rating_count": row[3]} for row in c.fetchall()}
+
     conn.close()
 
     return {
         "foods": food_ratings,
         "stations": station_ratings,
-        "dining_halls": dining_hall_ratings
+        "dining_halls": dining_hall_ratings,
+        "meals": meal_ratings
     }
 
 def delete_all_ratings():

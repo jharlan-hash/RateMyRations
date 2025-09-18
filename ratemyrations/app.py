@@ -1,4 +1,6 @@
 from flask import Flask, jsonify, request, render_template
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from datetime import datetime, timedelta
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -6,6 +8,12 @@ import database
 import json
 
 app = Flask(__name__, template_folder='templates')
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["10 per minute"],
+    storage_uri="memory://",
+)
 
 # Cache configuration
 CACHE = {}

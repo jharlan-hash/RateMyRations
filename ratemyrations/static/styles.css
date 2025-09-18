@@ -82,6 +82,19 @@ li {
     animation: fadeIn 0.5s ease-in-out;
 }
 
+.food-item-container {
+    display: flex;
+    flex-grow: 1;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.food-item-name {
+    flex-grow: 1;
+}
+
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -163,4 +176,21 @@ li {
     margin-left: 10px;
     font-size: 0.9em;
     color: #555;
+}
+
+.hidden {
+    display: none;
+}
+
+.error-message {
+    color: #e74c3c;
+    text-align: center;
+    padding: 20px;
+    font-size: 1.2em;
+}
+
+
+
+.meal-star-rating .stars-outer {
+    font-size: 1.2em;
 }

@@ -1,4 +1,3 @@
-
 document.addEventListener("DOMContentLoaded", function() {
     const dateInput = document.getElementById("menu-date");
     const today = new Date();
@@ -118,8 +117,14 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function fetchMenus(date, openTabs = new Set()) {
+
         fetch(`/api/menus?date=${date}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
                 const menusContainer = document.getElementById("menus-container");
                 menusContainer.innerHTML = ""; // Clear previous menus
@@ -158,6 +163,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
                         const mealTitle = document.createElement("h3");
                         mealTitle.textContent = meal.charAt(0).toUpperCase() + meal.slice(1);
+                        if (ratings.meals[`${diningHall}_${meal}`]) {
+                            const avgRating = ratings.meals[`${diningHall}_${meal}`].avg_rating;
+                            const starRating = renderStars(avgRating, null, false);
+                            starRating.classList.add('meal-star-rating');
+                            mealTitle.appendChild(starRating);
+                        }
                         mealDiv.appendChild(mealTitle);
 
                         const mealContent = document.createElement("div");
@@ -189,11 +200,21 @@ document.addEventListener("DOMContentLoaded", function() {
                                 }
                                 data[diningHall][meal][station].forEach(item => {
                                     const listItem = document.createElement("li");
-                                    listItem.textContent = item.name;
+
+                                    const foodItemContainer = document.createElement('div');
+                                    foodItemContainer.classList.add('food-item-container');
+
+                                    const foodItemName = document.createElement('span');
+                                    foodItemName.classList.add('food-item-name');
+                                    foodItemName.textContent = item.name;
+
+                                    foodItemContainer.appendChild(foodItemName);
 
                                     const foodRatingKey = `${item.name}_${station}_${diningHall}_${item.meal}`;
                                     const foodRating = ratings.foods[foodRatingKey] ? ratings.foods[foodRatingKey].avg_rating : 0;
-                                    listItem.appendChild(renderStars(foodRating, item.id));
+                                    foodItemContainer.appendChild(renderStars(foodRating, item.id));
+
+                                    listItem.appendChild(foodItemContainer);
                                     
                                     menuList.appendChild(listItem);
                                 });
@@ -201,7 +222,11 @@ document.addEventListener("DOMContentLoaded", function() {
                                 mealContent.appendChild(stationDiv);
 
                                 stationTitle.addEventListener("click", function() {
-                                    menuList.classList.toggle("active");
+                                    const isActive = menuList.classList.toggle("active");
+                                    if (!isActive) {
+                                        const innerActive = menuList.querySelectorAll('.active');
+                                        innerActive.forEach(el => el.classList.remove('active'));
+                                    }
                                 });
                             }
                         } else {
@@ -212,15 +237,28 @@ document.addEventListener("DOMContentLoaded", function() {
                         diningHallContent.appendChild(mealDiv)
 
                         mealTitle.addEventListener("click", function() {
-                            mealContent.classList.toggle("active");
+                            const isActive = mealContent.classList.toggle("active");
+                            if (!isActive) {
+                                const innerActive = mealContent.querySelectorAll('.active');
+                                innerActive.forEach(el => el.classList.remove('active'));
+                            }
                         });
                     }
                     menusContainer.appendChild(diningHallDiv);
 
                     diningHallTitle.addEventListener("click", function() {
-                        diningHallContent.classList.toggle("active");
+                        const isActive = diningHallContent.classList.toggle("active");
+                        if (!isActive) {
+                            const innerActive = diningHallContent.querySelectorAll('.active');
+                            innerActive.forEach(el => el.classList.remove('active'));
+                        }
                     });
                 }
+            })
+            .catch(error => {
+                console.error('Error fetching menus:', error);
+                const menusContainer = document.getElementById("menus-container");
+                menusContainer.innerHTML = `<p class="error-message">Could not load the menu at this time. Please try again later.</p>`;
             });
     }
 
@@ -230,16 +268,5 @@ document.addEventListener("DOMContentLoaded", function() {
 
     dateInput.addEventListener("change", function() {
         fetchMenus(this.value);
-    });
-
-    const deleteRatingsBtn = document.getElementById("delete-ratings-btn");
-    deleteRatingsBtn.addEventListener("click", () => {
-        fetch("/api/delete-ratings", {
-            method: "POST"
-        }).then(() => {
-            localStorage.removeItem("userRatings");
-            userRatings = {}; // Clear the userRatings object
-            fetchRatings().then(() => fetchMenus(dateInput.value));
-        });
     });
 });
