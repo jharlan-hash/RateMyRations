@@ -6,6 +6,7 @@ RATE_LIMIT_STORAGE_URI = os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://")
 
 # Admin token for destructive endpoints
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "change-me")
+ENABLE_DELETE_RATINGS = os.environ.get("ENABLE_DELETE_RATINGS", "false").lower() == "true"
 
 # Caching
 CACHE_MINUTES = int(os.environ.get("CACHE_MINUTES", "30"))

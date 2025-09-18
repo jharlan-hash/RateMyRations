@@ -10,6 +10,10 @@ def create_tables():
     """Creates the database tables if they don't exist."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    # SQLite pragmas for better concurrency on reads
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=NORMAL")
+    c.execute("PRAGMA busy_timeout=3000")
     c.execute("""
         CREATE TABLE IF NOT EXISTS foods (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,10 +61,20 @@ def add_food(name, station, dining_hall, meal):
     """Adds a food item to the database and returns its ID."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute(
-        "INSERT OR IGNORE INTO foods (name, station, dining_hall, meal) VALUES (?, ?, ?, ?)",
-        (name, station, dining_hall, meal),
-    )
+    # Retry on database is locked
+    for _ in range(3):
+        try:
+            c.execute(
+                "INSERT OR IGNORE INTO foods (name, station, dining_hall, meal) VALUES (?, ?, ?, ?)",
+                (name, station, dining_hall, meal),
+            )
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                import time; time.sleep(0.1)
+                continue
+            else:
+                raise
     if c.rowcount:
         food_id = c.lastrowid
     else:
@@ -81,28 +95,73 @@ def add_rating(food_id, user_id, rating):
     c = conn.cursor()
     if rating == 0:
         if user_id is not None:
-            c.execute("DELETE FROM ratings WHERE food_id = ? AND user_id = ?", (food_id, user_id))
+            for _ in range(3):
+                try:
+                    c.execute("DELETE FROM ratings WHERE food_id = ? AND user_id = ?", (food_id, user_id))
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
         else:
             # Fallback: delete most recent if no user provided (legacy behavior)
-            c.execute(
-                "DELETE FROM ratings WHERE id = (SELECT id FROM ratings WHERE food_id = ? ORDER BY timestamp DESC LIMIT 1)",
-                (food_id,),
-            )
+            for _ in range(3):
+                try:
+                    c.execute(
+                        "DELETE FROM ratings WHERE id = (SELECT id FROM ratings WHERE food_id = ? ORDER BY timestamp DESC LIMIT 1)",
+                        (food_id,),
+                    )
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
     else:
         if user_id is None:
             # Legacy insert without user tracking
-            c.execute("INSERT INTO ratings (food_id, rating) VALUES (?, ?)", (food_id, rating))
+            for _ in range(3):
+                try:
+                    c.execute("INSERT INTO ratings (food_id, rating) VALUES (?, ?)", (food_id, rating))
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
         else:
             # Emulate upsert: try update first, then insert if no row updated
-            c.execute(
-                "UPDATE ratings SET rating = ?, timestamp = CURRENT_TIMESTAMP WHERE food_id = ? AND user_id = ?",
-                (rating, food_id, user_id),
-            )
+            for _ in range(3):
+                try:
+                    c.execute(
+                        "UPDATE ratings SET rating = ?, timestamp = CURRENT_TIMESTAMP WHERE food_id = ? AND user_id = ?",
+                        (rating, food_id, user_id),
+                    )
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
             if c.rowcount == 0:
-                c.execute(
-                    "INSERT OR IGNORE INTO ratings (food_id, user_id, rating) VALUES (?, ?, ?)",
-                    (food_id, user_id, rating),
-                )
+                for _ in range(3):
+                    try:
+                        c.execute(
+                            "INSERT OR IGNORE INTO ratings (food_id, user_id, rating) VALUES (?, ?, ?)",
+                            (food_id, user_id, rating),
+                        )
+                        break
+                    except sqlite3.OperationalError as e:
+                        if "database is locked" in str(e):
+                            import time; time.sleep(0.1)
+                            continue
+                        else:
+                            raise
     conn.commit()
     conn.close()
 
@@ -123,6 +182,27 @@ def get_ratings():
         f"{row[0]}_{row[1]}_{row[2]}_{row[3]}": {"avg_rating": row[4], "rating_count": row[5]}
         for row in c.fetchall()
     }
+
+    # Food rating distributions (1..5)
+    c.execute("""
+        SELECT f.name, f.station, f.dining_hall, f.meal, r.rating, COUNT(*)
+        FROM foods f
+        JOIN ratings r ON f.id = r.food_id
+        GROUP BY f.id, r.rating
+    """)
+    distributions = {}
+    for row in c.fetchall():
+        key = f"{row[0]}_{row[1]}_{row[2]}_{row[3]}"
+        if key not in distributions:
+            distributions[key] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        distributions[key][int(row[4])] = row[5]
+
+    # Merge distributions into food_ratings
+    for key, dist in distributions.items():
+        if key in food_ratings:
+            food_ratings[key]["dist"] = dist
+        else:
+            food_ratings[key] = {"avg_rating": 0, "rating_count": sum(dist.values()), "dist": dist}
 
     # Station ratings
     c.execute("""

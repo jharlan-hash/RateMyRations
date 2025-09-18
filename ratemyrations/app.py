@@ -178,6 +178,8 @@ def rate_route():
 
 @app.route("/api/delete-ratings", methods=["POST"])
 def delete_ratings_route():
+    if not config.ENABLE_DELETE_RATINGS:
+        return jsonify({"error": "Disabled"}), 404
     token = request.headers.get("X-Admin-Token")
     if not token or token != config.ADMIN_TOKEN:
         return jsonify({"error": "Forbidden"}), 403
@@ -188,6 +190,35 @@ def delete_ratings_route():
 @app.route("/healthz")
 def healthz():
     return jsonify({"status": "ok"})
+
+
+@app.route("/readyz")
+def readyz():
+    # Check DB connectivity
+    try:
+        _ = database.get_ratings()
+    except Exception as e:
+        return jsonify({"status": "unready", "db": str(e)}), 503
+
+    # Check Redis for rate limiting if configured
+    info = {"status": "ready", "db": "ok"}
+    try:
+        if rate_limit_storage_uri.startswith("redis://"):
+            import redis
+            url = rate_limit_storage_uri.replace("redis://", "")
+            host_port_db = url.split("/")
+            host_port = host_port_db[0]
+            db = int(host_port_db[1]) if len(host_port_db) > 1 else 0
+            host, port = host_port.split(":")
+            r = redis.Redis(host=host, port=int(port), db=db)
+            r.ping()
+            info["redis"] = "ok"
+        else:
+            info["redis"] = "not_configured"
+    except Exception as e:
+        return jsonify({"status": "unready", "db": "ok", "redis": str(e)}), 503
+
+    return jsonify(info)
 
 if __name__ == "__main__":
     database.create_tables()

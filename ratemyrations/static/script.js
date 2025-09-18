@@ -208,7 +208,15 @@ document.addEventListener("DOMContentLoaded", function() {
                                 if (openTabs.has(stationId)) {
                                     menuList.classList.add("active");
                                 }
-                                data[diningHall][meal][station].forEach(item => {
+                                const items = data[diningHall][meal][station];
+                                if (!items || items.length === 0) {
+                                    const emptyHint = document.createElement('p');
+                                    emptyHint.classList.add('empty-hint');
+                                    emptyHint.textContent = 'No items here yet.';
+                                    mealContent.appendChild(emptyHint);
+                                    continue;
+                                }
+                                items.forEach(item => {
                                     const listItem = document.createElement("li");
 
                                     const foodItemContainer = document.createElement('div');
@@ -232,6 +240,20 @@ document.addEventListener("DOMContentLoaded", function() {
                                     const communityObj = ratings.foods[foodRatingKey] || { avg_rating: 0, rating_count: 0 };
                                     const communityStars = renderStars(communityObj.avg_rating, null, false);
                                     communityRow.appendChild(communityStars);
+                                    // Histogram tooltip
+                                    if (communityObj.dist) {
+                                        const hist = document.createElement('div');
+                                        hist.classList.add('histogram');
+                                        const total = Object.values(communityObj.dist).reduce((a,b)=>a+b,0) || 1;
+                                        for (let i=1;i<=5;i++) {
+                                            const bar = document.createElement('div');
+                                            bar.classList.add('bar');
+                                            bar.style.height = `${(communityObj.dist[i] / total) * 32 + 2}px`;
+                                            bar.title = `${i}★: ${communityObj.dist[i]||0}`;
+                                            hist.appendChild(bar);
+                                        }
+                                        communityRow.appendChild(hist);
+                                    }
                                     const countSpan = document.createElement('span');
                                     countSpan.classList.add('rating-count');
                                     countSpan.textContent = ` ${communityObj.rating_count || 0}`;
@@ -246,7 +268,15 @@ document.addEventListener("DOMContentLoaded", function() {
                                     yourRow.appendChild(yourLabel);
                                     const myRating = userRatings[item.id] ? parseInt(userRatings[item.id], 10) : 0;
                                     const yourStars = renderStars(myRating, item.id, true);
+                                    yourStars.classList.add('your-stars');
                                     yourRow.appendChild(yourStars);
+
+                                    if (!communityObj.rating_count) {
+                                        const hint = document.createElement('span');
+                                        hint.classList.add('empty-hint');
+                                        hint.textContent = 'Be the first to rate this item';
+                                        communityRow.appendChild(hint);
+                                    }
 
                                     foodItemContainer.appendChild(communityRow);
                                     foodItemContainer.appendChild(yourRow);

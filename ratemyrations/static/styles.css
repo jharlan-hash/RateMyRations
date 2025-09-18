@@ -137,6 +137,10 @@ li {
     color: #ffc107;
 }
 
+.your-stars .star.rated {
+    color: #4a90e2; /* distinguish user's stars */
+}
+
 .remove-rating {
     display: none;
 }
@@ -163,6 +167,19 @@ li {
 .rating-count {
     font-size: 0.85em;
     color: #777;
+}
+
+.histogram {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    margin-left: 6px;
+}
+
+.histogram .bar {
+    width: 6px;
+    background: #cbd5e1;
+    border-radius: 2px 2px 0 0;
 }
 
 .stars-outer {
@@ -211,4 +228,10 @@ li {
 
 .meal-star-rating .stars-outer {
     font-size: 1.2em;
+}
+
+.empty-hint {
+    margin-left: 8px;
+    font-size: 0.85em;
+    color: #888;
 }
