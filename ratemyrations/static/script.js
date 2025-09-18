@@ -8,6 +8,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
     let ratings = {};
     let userRatings = JSON.parse(localStorage.getItem("userRatings")) || {};
+    let browserId = localStorage.getItem("browserId");
+    if (!browserId) {
+        browserId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem("browserId", browserId);
+    }
 
     const diningHallHours = {
         "Burge": {
@@ -77,10 +82,12 @@ document.addEventListener("DOMContentLoaded", function() {
                         openTabs.add(tab.id);
                     });
 
+                    if (star.dataset._debouncing) return;
+                    star.dataset._debouncing = "1";
                     fetch("/api/rate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ food_id: foodId, rating: newRating })
+                        body: JSON.stringify({ food_id: foodId, rating: newRating, user_id: browserId })
                     }).then(() => {
                         if (newRating === 0) {
                             delete userRatings[foodId];
@@ -89,6 +96,8 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
                         fetchRatings().then(() => fetchMenus(dateInput.value, openTabs));
+                    }).finally(() => {
+                        delete star.dataset._debouncing;
                     });
                 });
             });
@@ -100,7 +109,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const starsInner = document.createElement("div");
             starsInner.classList.add("stars-inner");
-            const starPercentage = (rating / 5) * 100;
+            const safeRating = isFinite(rating) && !isNaN(rating) ? rating : 0;
+            const starPercentage = (safeRating / 5) * 100;
             starsInner.style.width = `${starPercentage}%`;
 
             starsOuter.appendChild(starsInner);
@@ -108,7 +118,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const ratingValue = document.createElement("span");
             ratingValue.classList.add("rating-value");
-            ratingValue.textContent = `(${rating.toFixed(2)})`;
+            ratingValue.textContent = `(${safeRating.toFixed(2)})`;
             starRatingContainer.appendChild(ratingValue);
         }
 
@@ -210,9 +220,36 @@ document.addEventListener("DOMContentLoaded", function() {
 
                                     foodItemContainer.appendChild(foodItemName);
 
+                                    // Community rating row (read-only)
+                                    const communityRow = document.createElement('div');
+                                    communityRow.classList.add('community-rating-row');
+                                    const communityLabel = document.createElement('span');
+                                    communityLabel.textContent = 'Community';
+                                    communityLabel.classList.add('rating-label');
+                                    communityRow.appendChild(communityLabel);
+
                                     const foodRatingKey = `${item.name}_${station}_${diningHall}_${item.meal}`;
-                                    const foodRating = ratings.foods[foodRatingKey] ? ratings.foods[foodRatingKey].avg_rating : 0;
-                                    foodItemContainer.appendChild(renderStars(foodRating, item.id));
+                                    const communityObj = ratings.foods[foodRatingKey] || { avg_rating: 0, rating_count: 0 };
+                                    const communityStars = renderStars(communityObj.avg_rating, null, false);
+                                    communityRow.appendChild(communityStars);
+                                    const countSpan = document.createElement('span');
+                                    countSpan.classList.add('rating-count');
+                                    countSpan.textContent = ` ${communityObj.rating_count || 0}`;
+                                    communityRow.appendChild(countSpan);
+
+                                    // Your rating row (interactive)
+                                    const yourRow = document.createElement('div');
+                                    yourRow.classList.add('your-rating-row');
+                                    const yourLabel = document.createElement('span');
+                                    yourLabel.textContent = 'Your rating';
+                                    yourLabel.classList.add('rating-label');
+                                    yourRow.appendChild(yourLabel);
+                                    const myRating = userRatings[item.id] ? parseInt(userRatings[item.id], 10) : 0;
+                                    const yourStars = renderStars(myRating, item.id, true);
+                                    yourRow.appendChild(yourStars);
+
+                                    foodItemContainer.appendChild(communityRow);
+                                    foodItemContainer.appendChild(yourRow);
 
                                     listItem.appendChild(foodItemContainer);
                                     

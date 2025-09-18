@@ -84,14 +84,14 @@ li {
 
 .food-item-container {
     display: flex;
-    flex-grow: 1;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+    width: 100%;
 }
 
 .food-item-name {
-    flex-grow: 1;
+    font-weight: 600;
 }
 
 
@@ -145,6 +145,24 @@ li {
     display: flex;
     align-items: center;
     flex-shrink: 0;
+}
+
+.community-rating-row,
+.your-rating-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rating-label {
+    font-size: 0.85em;
+    color: #666;
+    min-width: 86px;
+}
+
+.rating-count {
+    font-size: 0.85em;
+    color: #777;
 }
 
 .stars-outer {
