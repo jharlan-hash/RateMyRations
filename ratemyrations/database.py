@@ -3,8 +3,6 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "ratings.db")
-print("Using database file:", DB_FILE)  # Debug log
-
 
 def create_tables():
     """Creates the database tables if they don't exist."""

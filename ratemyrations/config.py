@@ -20,10 +20,15 @@ IGNORE_CATEGORIES = [
     "Beverages",
     "Condiments",
     "Breads & Spreads, Cereal, and Waffle Bar",
-    "Desserts",
     "Salad Bar",
+    "Delights",
     "Yogurt Bar",
+    "Fruit & Yogurt",
+    "Frozen Yogurt Bar",
+    "Breads & Spreads",
+    "Cereal",
 ]
+
 
 # Centralized menus configuration (hall name, school slug, meal slug)
 MENUS_TO_FETCH = [

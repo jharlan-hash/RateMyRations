@@ -117,6 +117,11 @@ def fetch_all_menus(date_str):
 def index():
     return render_template("index.html")
 
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
 @app.route("/api/menus")
 def get_menus_route():
     date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))

@@ -95,6 +95,8 @@ document.addEventListener("DOMContentLoaded", function() {
                             userRatings[foodId] = newRating;
                         }
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
+                        
+                        // Simple approach: re-render everything
                         fetchRatings().then(() => fetchMenus(dateInput.value, openTabs));
                     }).finally(() => {
                         delete star.dataset._debouncing;
@@ -163,10 +165,12 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (currentMeal === null) {
                         const closedMessage = document.createElement("p");
                         closedMessage.textContent = "This dining hall is currently closed.";
-                        diningHallContent.appendChild(closedMessage);
+                       diningHallContent.appendChild(closedMessage);
                     }
 
-                    for (const meal in data[diningHall]) {
+                    // Render meals in fixed order
+                    const orderedMeals = ["breakfast", "lunch", "dinner"].filter(m => data[diningHall].hasOwnProperty(m));
+                    for (const meal of orderedMeals) {
                         const mealId = `meal-content-${diningHall}-${meal}`;
                         const mealDiv = document.createElement("div");
                         mealDiv.classList.add("meal");
@@ -269,6 +273,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                     const myRating = userRatings[item.id] ? parseInt(userRatings[item.id], 10) : 0;
                                     const yourStars = renderStars(myRating, item.id, true);
                                     yourStars.classList.add('your-stars');
+                                    yourStars.dataset.foodId = item.id;
                                     yourRow.appendChild(yourStars);
 
                                     if (!communityObj.rating_count) {
@@ -305,6 +310,13 @@ document.addEventListener("DOMContentLoaded", function() {
 
                         mealTitle.addEventListener("click", function() {
                             const isActive = mealContent.classList.toggle("active");
+                            // Close sibling meals at same level
+                            const siblingMeals = mealDiv.parentElement.querySelectorAll('.meal .meal-content');
+                            siblingMeals.forEach(sib => {
+                                if (sib !== mealContent) {
+                                    sib.classList.remove('active');
+                                }
+                            });
                             if (!isActive) {
                                 const innerActive = mealContent.querySelectorAll('.active');
                                 innerActive.forEach(el => el.classList.remove('active'));
@@ -327,6 +339,63 @@ document.addEventListener("DOMContentLoaded", function() {
                 const menusContainer = document.getElementById("menus-container");
                 menusContainer.innerHTML = `<p class="error-message">Could not load the menu at this time. Please try again later.</p>`;
             });
+    }
+
+    function updateRatingsInPlace() {
+        // Update community ratings without full re-render
+        document.querySelectorAll('.community-rating-row').forEach(row => {
+            const foodId = row.closest('li').querySelector('.your-stars')?.dataset.foodId;
+            if (foodId) {
+                // Find the food key from the item data - use the original meal slug from the menu data
+                const foodName = row.closest('li').querySelector('.food-item-name').textContent;
+                const station = row.closest('.station').querySelector('h4').textContent;
+                const diningHall = row.closest('.dining-hall').querySelector('h2').textContent;
+                
+                // Get the original meal slug from the menu data, not the normalized display name
+                const mealDiv = row.closest('.meal');
+                const mealId = mealDiv.id; // e.g., "meal-content-Burge-lunch"
+                const mealSlug = mealId.split('-').pop(); // Extract "lunch" from the ID
+                
+                const foodKey = `${foodName}_${station}_${diningHall}_${mealSlug}`;
+                
+                const communityObj = ratings.foods[foodKey] || { avg_rating: 0, rating_count: 0 };
+                
+                // Update stars
+                const starsContainer = row.querySelector('.star-rating-container');
+                if (starsContainer) {
+                    const starsInner = starsContainer.querySelector('.stars-inner');
+                    const ratingValue = starsContainer.querySelector('.rating-value');
+                    if (starsInner && ratingValue) {
+                        const safeRating = isFinite(communityObj.avg_rating) && !isNaN(communityObj.avg_rating) ? communityObj.avg_rating : 0;
+                        starsInner.style.width = `${(safeRating / 5) * 100}%`;
+                        ratingValue.textContent = `(${safeRating.toFixed(2)})`;
+                    }
+                }
+                
+                // Update count
+                const countSpan = row.querySelector('.rating-count');
+                if (countSpan) {
+                    countSpan.textContent = ` ${communityObj.rating_count || 0}`;
+                }
+                
+                // Update histogram if it exists
+                const existingHistogram = row.querySelector('.histogram');
+                if (existingHistogram && communityObj.dist) {
+                    existingHistogram.remove();
+                    const hist = document.createElement('div');
+                    hist.classList.add('histogram');
+                    const total = Object.values(communityObj.dist).reduce((a,b)=>a+b,0) || 1;
+                    for (let i=1;i<=5;i++) {
+                        const bar = document.createElement('div');
+                        bar.classList.add('bar');
+                        bar.style.height = `${(communityObj.dist[i] / total) * 32 + 2}px`;
+                        bar.title = `${i}★: ${communityObj.dist[i]||0}`;
+                        hist.appendChild(bar);
+                    }
+                    row.appendChild(hist);
+                }
+            }
+        });
     }
 
     fetchRatings().then(() => {
