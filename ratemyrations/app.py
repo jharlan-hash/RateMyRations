@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import database
 import json
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='templates')
 
 # Cache configuration
 CACHE = {}
