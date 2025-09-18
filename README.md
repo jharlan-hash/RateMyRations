@@ -2,6 +2,8 @@
 
 A web application for viewing and rating dining hall menus at the University of Iowa. Students can browse daily menus from Burge, Catlett, and Hillcrest dining halls and rate individual food items.
 
+Check out my hosted version at https://rations.jacksovern.xyz
+
 ## Features
 
 - **Menu Display**: View daily menus from all three UIowa dining halls (Burge, Catlett, Hillcrest)
