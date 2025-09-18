@@ -1,10 +1,12 @@
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import json
+
+from flask import Flask, jsonify, request, render_template
 from datetime import datetime, timedelta
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlparse, parse_qs
 import database
+import json
+
+app = Flask(__name__)
 
 # Cache configuration
 CACHE = {}
@@ -83,84 +85,41 @@ def fetch_all_menus(date_str):
             
     return menus
 
-class MenuRequestHandler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        if self.path == "/api/rate":
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data)
-            
-            database.add_rating(data["food_id"], data["rating"])
-            
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "success"}).encode())
-        elif self.path == "/api/delete-ratings":
-            database.delete_all_ratings()
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "success"}).encode())
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-    def do_GET(self):
-        if self.path.startswith("/api/menus"):
-            query_components = parse_qs(urlparse(self.path).query)
-            date_str = query_components.get("date", [datetime.now().strftime("%Y-%m-%d")])[0]
-            
-            now = datetime.now()
-            if CACHE.get(date_str) and now - CACHE[date_str]["timestamp"] < CACHE_DURATION:
-                self.send_response(200)
-                self.send_header("Content-type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps(CACHE[date_str]["data"]).encode())
-                return
+@app.route("/api/menus")
+def get_menus_route():
+    date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
+    
+    now = datetime.now()
+    if CACHE.get(date_str) and now - CACHE[date_str]["timestamp"] < CACHE_DURATION:
+        return jsonify(CACHE[date_str]["data"])
 
-            menus = fetch_all_menus(date_str)
-            CACHE[date_str] = {
-                "data": menus,
-                "timestamp": now
-            }
+    menus = fetch_all_menus(date_str)
+    CACHE[date_str] = {
+        "data": menus,
+        "timestamp": now
+    }
+    return jsonify(menus)
 
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(menus).encode())
-        elif self.path == "/api/ratings":
-            ratings = database.get_ratings()
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(ratings).encode())
-        elif self.path == "/":
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            with open("templates/index.html", "rb") as f:
-                self.wfile.write(f.read())
-        elif self.path == "/static/styles.css":
-            self.send_response(200)
-            self.send_header("Content-type", "text/css")
-            self.end_headers()
-            with open("static/styles.css", "rb") as f:
-                self.wfile.write(f.read())
-        elif self.path == "/static/script.js":
-            self.send_response(200)
-            self.send_header("Content-type", "application/javascript")
-            self.end_headers()
-            with open("static/script.js", "rb") as f:
-                self.wfile.write(f.read())
-        else:
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b"Not Found")
+@app.route("/api/ratings")
+def get_ratings_route():
+    ratings = database.get_ratings()
+    return jsonify(ratings)
 
-def run_server():
-    server_address = ("", 8000)
-    httpd = HTTPServer(server_address, MenuRequestHandler)
-    print("Server running on port 8000...")
-    httpd.serve_forever()
+@app.route("/api/rate", methods=["POST"])
+def rate_route():
+    data = request.get_json()
+    database.add_rating(data["food_id"], data["rating"])
+    return jsonify({"status": "success"})
+
+@app.route("/api/delete-ratings", methods=["POST"])
+def delete_ratings_route():
+    database.delete_all_ratings()
+    return jsonify({"status": "success"})
 
 if __name__ == "__main__":
     database.create_tables()
-    run_server()
+    app.run(debug=True, port=8000)
