@@ -118,9 +118,41 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/about")
-def about():
-    return render_template("about.html")
+@app.route("/admin")
+def admin():
+    token = request.args.get("token")
+    if not token or token != config.ADMIN_TOKEN:
+        return jsonify({"error": "Forbidden"}), 403
+    return render_template("admin.html")
+
+
+@app.route("/api/admin/ratings")
+def get_admin_ratings():
+    token = request.args.get("token")
+    if not token or token != config.ADMIN_TOKEN:
+        return jsonify({"error": "Forbidden"}), 403
+    
+    ratings = database.get_all_ratings()
+    return jsonify(ratings)
+
+
+@app.route("/api/admin/delete-rating", methods=["POST"])
+def delete_admin_rating():
+    token = request.headers.get("X-Admin-Token")
+    if not token or token != config.ADMIN_TOKEN:
+        return jsonify({"error": "Forbidden"}), 403
+    
+    data = request.get_json()
+    rating_id = data.get("rating_id")
+    
+    if not rating_id:
+        return jsonify({"error": "rating_id required"}), 400
+    
+    success = database.delete_rating_by_id(rating_id)
+    if success:
+        return jsonify({"status": "success"})
+    else:
+        return jsonify({"error": "Rating not found"}), 404
 
 @app.route("/api/menus")
 def get_menus_route():
@@ -195,6 +227,29 @@ def delete_ratings_route():
 @app.route("/healthz")
 def healthz():
     return jsonify({"status": "ok"})
+
+
+@app.route("/warm-cache")
+def warm_cache():
+    """Warm up the cache for all workers by fetching today's menus."""
+    try:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        menus = fetch_all_menus(date_str)
+        
+        # Store in cache
+        CACHE[date_str] = {
+            "data": menus,
+            "timestamp": datetime.now()
+        }
+        CACHE.move_to_end(date_str)
+        
+        return jsonify({
+            "status": "success", 
+            "date": date_str,
+            "cached_menus": len([m for hall in menus.values() for meal in hall.values() for station in meal.values() for items in station.values()])
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/readyz")

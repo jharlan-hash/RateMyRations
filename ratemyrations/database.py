@@ -256,13 +256,55 @@ def get_ratings():
     }
 
 
-def delete_all_ratings():
-    """Deletes all ratings from the database."""
+def get_all_ratings():
+    """Gets all ratings with food details for admin console."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("DELETE FROM ratings")
+    
+    c.execute("""
+        SELECT r.id, r.user_id, r.rating, r.timestamp,
+               f.name, f.station, f.dining_hall, f.meal
+        FROM ratings r
+        JOIN foods f ON r.food_id = f.id
+        ORDER BY r.timestamp DESC
+    """)
+    
+    ratings = []
+    for row in c.fetchall():
+        ratings.append({
+            "id": row[0],
+            "user_id": row[1],
+            "rating": row[2],
+            "timestamp": row[3],
+            "food_name": row[4],
+            "station": row[5],
+            "dining_hall": row[6],
+            "meal": row[7]
+        })
+    
+    conn.close()
+    return ratings
+
+
+def delete_rating_by_id(rating_id):
+    """Deletes a specific rating by ID."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    for _ in range(3):
+        try:
+            c.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                import time; time.sleep(0.1)
+                continue
+            else:
+                raise
+    
     conn.commit()
     conn.close()
+    return c.rowcount > 0
 
 
 if __name__ == '__main__':
