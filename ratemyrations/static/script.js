@@ -56,12 +56,6 @@ document.addEventListener("DOMContentLoaded", function() {
             })
             .then(data => {
                 ratings = data;
-                console.log('Debug - Fetched ratings from server:', {
-                    totalFoods: Object.keys(data.foods || {}).length,
-                    catlettFoods: Object.keys(data.foods || {}).filter(k => k.includes('Catlett')).length,
-                    burgeFoods: Object.keys(data.foods || {}).filter(k => k.includes('Burge')).length,
-                    sampleKeys: Object.keys(data.foods || {}).slice(0, 5)
-                });
                 return data;
             })
             .catch(error => {
@@ -130,12 +124,10 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
                         
-                        console.log('Rating updated successfully, fetching fresh ratings...');
-                        console.log(`Debug - Updated rating for food_id: ${foodId}, rating: ${newRating}`);
+        console.log('Rating updated successfully, fetching fresh ratings...');
                         // Update ratings first, then re-render menus
                         return fetchRatings();
                     }).then(() => {
-                        console.log('Fresh ratings fetched, re-rendering menus...');
                         // Only re-render menus if ratings fetch succeeded
                         fetchMenus(dateInput.value, openTabs);
                     }).catch(error => {
@@ -230,16 +222,6 @@ document.addEventListener("DOMContentLoaded", function() {
                             const foodKey = `${item.name}_${station}_${diningHall}_${originalMealSlug}`;
                             menuFoodKeys.add(foodKey);
                             
-                            // Debug logging for Catlett items (can be removed after testing)
-                            if (diningHall === 'Catlett') {
-                                console.log(`Debug Catlett - ${item.name} in ${station} (${meal}):`, foodKey);
-                                const matchingRating = ratings.foods[foodKey];
-                                if (matchingRating) {
-                                    console.log(`  ✓ Found rating:`, matchingRating);
-                                } else {
-                                    console.log(`  ✗ No rating found. Similar keys:`, Object.keys(ratings.foods).filter(k => k.includes(item.name)));
-                                }
-                            }
                         }
                     }
                 }
