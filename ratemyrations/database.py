@@ -298,7 +298,7 @@ def get_all_ratings():
     c = conn.cursor()
     
     c.execute("""
-        SELECT r.id, r.user_id, r.rating, r.timestamp,
+        SELECT r.id, r.user_id, r.rating, r.date, r.timestamp,
                f.name, f.station, f.dining_hall, f.meal,
                u.nickname, u.is_banned
         FROM ratings r
@@ -313,13 +313,14 @@ def get_all_ratings():
             "id": row[0],
             "user_id": row[1],
             "rating": row[2],
-            "timestamp": row[3],
-            "food_name": row[4],
-            "station": row[5],
-            "dining_hall": row[6],
-            "meal": row[7],
-            "nickname": row[8],
-            "is_banned": bool(row[9]) if row[9] is not None else False
+            "date": row[3],
+            "timestamp": row[4],
+            "food_name": row[5],
+            "station": row[6],
+            "dining_hall": row[7],
+            "meal": row[8],
+            "nickname": row[9],
+            "is_banned": bool(row[10]) if row[10] is not None else False
         })
     
     conn.close()
@@ -427,6 +428,27 @@ def delete_rating_by_id(rating_id):
     conn.commit()
     conn.close()
     return c.rowcount > 0
+
+
+def delete_all_ratings():
+    """Deletes all ratings from the database."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    for _ in range(3):
+        try:
+            c.execute("DELETE FROM ratings")
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                import time; time.sleep(0.1)
+                continue
+            else:
+                raise
+    
+    conn.commit()
+    conn.close()
+    return c.rowcount
 
 
 if __name__ == '__main__':

@@ -265,14 +265,35 @@ def internal_error_handler(e):
 @app.route("/api/rate", methods=["POST"])
 def rate_route():
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON data"}), 400
+    
     user_id = data.get("user_id")
     date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
+    food_id = data.get("food_id")
+    rating = data.get("rating")
+    
+    # Validate required fields
+    if not food_id:
+        return jsonify({"error": "food_id is required"}), 400
+    
+    # Validate rating value
+    if rating is None:
+        return jsonify({"error": "rating is required"}), 400
+    
+    try:
+        rating = int(rating)
+    except (ValueError, TypeError):
+        return jsonify({"error": "rating must be a number"}), 400
+    
+    if rating not in [0, 1, 2, 3, 4, 5]:
+        return jsonify({"error": "rating must be between 0 and 5"}), 400
     
     # Check if user is banned
     if user_id and database.is_user_banned(user_id):
         return jsonify({"error": "User is banned"}), 403
     
-    database.add_rating(data["food_id"], user_id, data["rating"], date_str)
+    database.add_rating(food_id, user_id, rating, date_str)
     return jsonify({"status": "success"})
 
 @app.route("/api/delete-ratings", methods=["POST"])

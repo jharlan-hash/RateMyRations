@@ -129,6 +129,22 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function filterRatingsByMenu(ratings, menuData) {
+        // Handle malformed ratings data
+        if (!ratings || typeof ratings !== 'object') {
+            return {
+                foods: {},
+                stations: {},
+                dining_halls: {},
+                meals: {}
+            };
+        }
+        
+        // Ensure ratings has the expected structure
+        if (!ratings.foods) ratings.foods = {};
+        if (!ratings.stations) ratings.stations = {};
+        if (!ratings.dining_halls) ratings.dining_halls = {};
+        if (!ratings.meals) ratings.meals = {};
+        
         // Create a set of food keys that are in today's menu
         const menuFoodKeys = new Set();
         for (const diningHall in menuData) {
