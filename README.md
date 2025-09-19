@@ -139,7 +139,7 @@ The application uses SQLite for storing ratings. The database is automatically c
 
 ### Menu Data Source
 
-The application fetches menu data from the University of Iowa's Nutrislice API:
+The application fetches menu data from the University of Iowa's Nutrislice API by default but can be changed:
 - API Base: `https://dininguiowa.api.nutrislice.com/menu/api/weeks/school/`
 - Supports breakfast, lunch, and dinner menus
 - Data is categorized by dining stations (excluding beverages, condiments, etc.)
@@ -185,18 +185,18 @@ RateMyRations can be easily adapted for other universities or schools that use N
 
 ### Finding Your School's Nutrislice Configuration
 
-1. **Locate your school's Nutrislice URL**:
-   - Visit your school's dining website
+1. **Find your school's Nutrislice URL**:
+   - Go to your school's dining website
    - Look for menu links or "View Menu" buttons
-   - The URL will typically be: `https://[school-name].api.nutrislice.com/menu/api/weeks/school/`
+   - The URL will usually be something like: `https://[school-name].api.nutrislice.com/menu/api/weeks/school/`
 
 2. **Identify your school ID**:
-   - From the URL, extract the school identifier (e.g., `burge-market`, `catlett-marketplace`)
-   - This is usually in the format: `[dining-hall-name]-[type]`
+   - From the URL, get the school identifier (e.g., `burge-market`, `catlett-marketplace`)
+   - This is generally in the format: `[dining-hall-name]-[type]`
 
 3. **Determine meal periods**:
    - Check what meal periods your school offers (breakfast, lunch, dinner, etc.)
-   - Note the exact meal identifiers used in the API
+   - Note the **exact** meal identifiers used in the API
 
 ### Configuration Changes
 
@@ -238,7 +238,7 @@ const MEAL_ORDER = ["breakfast", "lunch", "dinner"]; // or your school's meal na
 
 #### 3. Update Templates
 
-In `templates/index.html`, update the title and branding:
+In `templates/index.html`, update the title:
 
 ```html
 <title>Your School RateMyRations</title>
