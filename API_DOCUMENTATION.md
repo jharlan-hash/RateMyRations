@@ -809,6 +809,330 @@ fetchMenus(date).catch(error => {
 });
 ```
 
+## Adapting for Other Schools
+
+RateMyRations is designed to work with any school that uses Nutrislice for their dining services. This section provides detailed instructions for adapting the application to other institutions.
+
+### Understanding Nutrislice API Structure
+
+The Nutrislice API follows a consistent pattern across schools:
+
+```
+https://[school-domain].api.nutrislice.com/menu/api/weeks/school/[school-id]/[meal-period]/[date]/
+```
+
+#### Key Components:
+- **School Domain**: Usually `[school-name]` or `[school-abbreviation]`
+- **School ID**: Internal identifier for each dining location (e.g., `burge-market`, `catlett-marketplace`)
+- **Meal Period**: Time-based meal identifiers (e.g., `breakfast`, `lunch`, `dinner`)
+- **Date**: ISO format date string
+
+### Step-by-Step Adaptation Guide
+
+#### 1. Discover Your School's Configuration
+
+**Method A: Inspect Network Requests**
+1. Visit your school's dining website
+2. Open browser developer tools (F12)
+3. Go to Network tab
+4. Navigate to a menu page
+5. Look for API calls to `nutrislice.com`
+6. Note the URL pattern and parameters
+
+**Method B: Check Source Code**
+1. View page source of your school's menu page
+2. Look for JavaScript that loads menu data
+3. Find API endpoints and configuration objects
+
+**Method C: Direct API Exploration**
+```bash
+# Try common patterns
+curl "https://your-school.api.nutrislice.com/menu/api/weeks/school/"
+curl "https://your-school.api.nutrislice.com/menu/api/weeks/school/main-dining/"
+```
+
+#### 2. Update Configuration Files
+
+**Primary Configuration (`config.py`)**
+```python
+import os
+
+# Update base URL
+NUTRISLICE_BASE_URL = "https://your-school.api.nutrislice.com/menu/api/weeks/school/"
+
+# Configure dining halls and meals
+MENUS_TO_FETCH = [
+    # Format: (Display Name, School ID, Meal Period)
+    ("Main Dining Hall", "main-dining", "breakfast"),
+    ("Main Dining Hall", "main-dining", "lunch"),
+    ("Main Dining Hall", "main-dining", "dinner"),
+    ("Student Union", "student-union", "breakfast"),
+    ("Student Union", "student-union", "lunch"),
+    ("Student Union", "student-union", "dinner"),
+    ("Campus Cafe", "campus-cafe", "lunch"),
+    ("Campus Cafe", "campus-cafe", "dinner"),
+]
+
+# Customize ignored categories
+IGNORE_CATEGORIES = [
+    "Beverages",
+    "Condiments",
+    "Coffee & Tea",
+    "Salad Bar Dressings",
+    "Bread & Spreads",
+    # Add school-specific categories
+]
+
+# Adjust other settings as needed
+RATE_LIMIT_DEFAULT = "60 per minute"  # Adjust based on expected usage
+CACHE_MINUTES = 30  # How often menus change
+MAX_DAYS_AHEAD = 14  # How far ahead menus are available
+```
+
+#### 3. Update Frontend Components
+
+**Dining Hall Names (`static/script.js`)**
+```javascript
+// Update the dining hall display names
+const DINING_HALLS = ["Main Dining Hall", "Student Union", "Campus Cafe"];
+
+// Update meal ordering if different
+const MEAL_ORDER = ["breakfast", "lunch", "dinner"];
+
+// Update meal slug mapping if your school uses different identifiers
+function getOriginalMealSlug(diningHall, meal) {
+    let originalMealSlug = meal;
+    
+    // Add your school's specific mappings here
+    if (diningHall === 'Main Dining Hall') {
+        if (meal === 'breakfast') originalMealSlug = 'morning-meal';
+        else if (meal === 'lunch') originalMealSlug = 'midday-meal';
+        else if (meal === 'dinner') originalMealSlug = 'evening-meal';
+    }
+    // Add more mappings as needed
+    
+    return originalMealSlug;
+}
+```
+
+**Branding Updates (`templates/index.html`)**
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RateMyRations - Your School Name</title>
+    <link rel="stylesheet" href="/static/styles.css?v=4">
+</head>
+<body>
+    <div class="container">
+        <h1>RateMyRations - Your School Name</h1>
+        <p><a href="/about">About</a></p>
+        <!-- Rest of template -->
+    </div>
+</body>
+</html>
+```
+
+#### 4. Testing Your Configuration
+
+**Test Menu Parsing**
+```bash
+# Test the menu parser with your school's configuration
+python menu_parser.py
+```
+
+**Test API Endpoints**
+```bash
+# Test menu fetching
+curl "http://localhost:8000/api/menus?date=$(date +%Y-%m-%d)"
+
+# Test with specific date
+curl "http://localhost:8000/api/menus?date=2024-01-15"
+
+# Test ratings endpoint
+curl "http://localhost:8000/api/ratings"
+```
+
+**Verify Data Structure**
+```python
+# Test script to verify your configuration
+from ratemyrations.app import fetch_all_menus
+from datetime import datetime
+
+# Fetch today's menus
+date_str = datetime.now().strftime("%Y-%m-%d")
+menus = fetch_all_menus(date_str)
+
+# Print structure
+for dining_hall, meals in menus.items():
+    print(f"\n{dining_hall}:")
+    for meal, stations in meals.items():
+        print(f"  {meal}:")
+        for station, items in stations.items():
+            print(f"    {station}: {len(items)} items")
+```
+
+### Common Adaptation Scenarios
+
+#### Scenario 1: Different Meal Names
+If your school uses non-standard meal names:
+
+```python
+# config.py
+MENUS_TO_FETCH = [
+    ("Dining Hall", "dining-hall", "morning-meal"),
+    ("Dining Hall", "dining-hall", "midday-meal"),
+    ("Dining Hall", "dining-hall", "evening-meal"),
+]
+
+# script.js - Update meal ordering
+const MEAL_ORDER = ["morning-meal", "midday-meal", "evening-meal"];
+```
+
+#### Scenario 2: Multiple Campuses
+For schools with multiple campuses:
+
+```python
+# config.py
+MENUS_TO_FETCH = [
+    ("North Campus - Main Dining", "north-main", "breakfast"),
+    ("North Campus - Main Dining", "north-main", "lunch"),
+    ("North Campus - Main Dining", "north-main", "dinner"),
+    ("South Campus - Union", "south-union", "breakfast"),
+    ("South Campus - Union", "south-union", "lunch"),
+    ("South Campus - Union", "south-union", "dinner"),
+    ("East Campus - Cafe", "east-cafe", "lunch"),
+    ("East Campus - Cafe", "east-cafe", "dinner"),
+]
+```
+
+#### Scenario 3: Different Rating Systems
+To change from 5-star to a different system:
+
+**Update HTML Template**
+```html
+<template id="star-rating-template">
+    <div class="star-rating">
+        <span class="star" data-value="1">★</span>
+        <span class="star" data-value="2">★</span>
+        <span class="star" data-value="3">★</span>
+        <!-- Add more stars or change to different symbols -->
+    </div>
+</template>
+```
+
+**Update JavaScript Validation**
+```javascript
+// Update rating validation
+function validateRating(rating) {
+    return rating >= 1 && rating <= 3; // Change max rating
+}
+```
+
+**Update Database Schema**
+```python
+# database.py - Update validation
+def add_rating(food_id, user_id, rating, date=None):
+    if not (1 <= rating <= 3):  # Update rating range
+        raise ValueError("Rating must be between 1 and 3")
+    # Rest of function...
+```
+
+### Troubleshooting Common Issues
+
+#### Issue: No Menu Data Returned
+**Symptoms**: Empty menus or API errors
+**Solutions**:
+1. Verify school ID and meal periods
+2. Check date format (must be YYYY-MM-DD)
+3. Ensure API endpoint is accessible
+4. Check for rate limiting
+
+#### Issue: Incorrect Station Names
+**Symptoms**: Stations appear as "Other" or have wrong names
+**Solutions**:
+1. Inspect raw API response
+2. Update station mapping logic
+3. Add custom station grouping
+
+#### Issue: Meal Periods Not Found
+**Symptoms**: Some meals show no items
+**Solutions**:
+1. Verify meal period identifiers
+2. Check if meals are available on specific dates
+3. Update meal slug mapping
+
+### Example: Complete Adaptation for "State University"
+
+**Complete `config.py`**
+```python
+import os
+
+# State University configuration
+NUTRISLICE_BASE_URL = "https://stateuniversity.api.nutrislice.com/menu/api/weeks/school/"
+
+MENUS_TO_FETCH = [
+    ("Main Dining Hall", "main-dining", "breakfast"),
+    ("Main Dining Hall", "main-dining", "lunch"),
+    ("Main Dining Hall", "main-dining", "dinner"),
+    ("Student Union", "student-union", "breakfast"),
+    ("Student Union", "student-union", "lunch"),
+    ("Student Union", "student-union", "dinner"),
+    ("Campus Cafe", "campus-cafe", "lunch"),
+    ("Campus Cafe", "campus-cafe", "dinner"),
+    ("Athletic Dining", "athletic-dining", "breakfast"),
+    ("Athletic Dining", "athletic-dining", "lunch"),
+    ("Athletic Dining", "athletic-dining", "dinner"),
+]
+
+IGNORE_CATEGORIES = [
+    "Beverages",
+    "Condiments",
+    "Coffee & Tea",
+    "Salad Bar Dressings",
+    "Bread & Spreads",
+    "Cereal Bar",
+    "Waffle Bar",
+]
+
+# Production settings for high-traffic school
+RATE_LIMIT_DEFAULT = "100 per minute"
+CACHE_MINUTES = 15
+CACHE_MAX_SIZE = 128
+MAX_DAYS_AHEAD = 21  # Menus available further ahead
+
+# Required environment variable
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+ENABLE_DELETE_RATINGS = False
+```
+
+**Updated Frontend (`static/script.js`)**
+```javascript
+// State University dining halls
+const DINING_HALLS = ["Main Dining Hall", "Student Union", "Campus Cafe", "Athletic Dining"];
+
+// Meal ordering
+const MEAL_ORDER = ["breakfast", "lunch", "dinner"];
+
+// Custom meal slug mapping if needed
+function getOriginalMealSlug(diningHall, meal) {
+    let originalMealSlug = meal;
+    
+    // State University specific mappings
+    if (diningHall === 'Athletic Dining') {
+        if (meal === 'breakfast') originalMealSlug = 'athletic-breakfast';
+        else if (meal === 'lunch') originalMealSlug = 'athletic-lunch';
+        else if (meal === 'dinner') originalMealSlug = 'athletic-dinner';
+    }
+    
+    return originalMealSlug;
+}
+```
+
+This comprehensive guide should help anyone adapt RateMyRations for their school's Nutrislice implementation!
+
 ---
 
 This documentation covers all public APIs, functions, and components in the RateMyRations application. For additional support or questions, refer to the source code or contact the development team.

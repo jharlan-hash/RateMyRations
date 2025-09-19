@@ -179,6 +179,153 @@ The application includes SELinux policies (`gunicorn.pp`, `gunicorn.te`) for con
 - **Database**: SQLite WAL mode provides good concurrency for moderate load
 - **Rate Limiting**: Default is 60 requests/minute per IP (configurable)
 
+## Adapting for Other Schools
+
+RateMyRations can be easily adapted for other universities or schools that use Nutrislice for their dining services. Here's a detailed guide:
+
+### Finding Your School's Nutrislice Configuration
+
+1. **Locate your school's Nutrislice URL**:
+   - Visit your school's dining website
+   - Look for menu links or "View Menu" buttons
+   - The URL will typically be: `https://[school-name].api.nutrislice.com/menu/api/weeks/school/`
+
+2. **Identify your school ID**:
+   - From the URL, extract the school identifier (e.g., `burge-market`, `catlett-marketplace`)
+   - This is usually in the format: `[dining-hall-name]-[type]`
+
+3. **Determine meal periods**:
+   - Check what meal periods your school offers (breakfast, lunch, dinner, etc.)
+   - Note the exact meal identifiers used in the API
+
+### Configuration Changes
+
+#### 1. Update `config.py`
+
+```python
+# Change the base URL to your school's Nutrislice API
+NUTRISLICE_BASE_URL = "https://your-school.api.nutrislice.com/menu/api/weeks/school/"
+
+# Update the menu configuration for your dining halls and meals
+MENUS_TO_FETCH = [
+    ("Dining Hall 1", "school-id-1", "breakfast"),
+    ("Dining Hall 1", "school-id-1", "lunch"),
+    ("Dining Hall 1", "school-id-1", "dinner"),
+    ("Dining Hall 2", "school-id-2", "breakfast"),
+    # Add more dining halls and meals as needed
+]
+
+# Update ignored categories based on your school's menu structure
+IGNORE_CATEGORIES = [
+    "Beverages",
+    "Condiments",
+    "Coffee Bar",
+    # Add categories specific to your school that shouldn't be rated
+]
+```
+
+#### 2. Update Frontend Display Names
+
+In `static/script.js`, update the dining hall names and meal ordering:
+
+```javascript
+// Update dining hall names in the UI
+const DINING_HALLS = ["Your Hall 1", "Your Hall 2", "Your Hall 3"];
+
+// Update meal ordering if different from breakfast/lunch/dinner
+const MEAL_ORDER = ["breakfast", "lunch", "dinner"]; // or your school's meal names
+```
+
+#### 3. Update Templates
+
+In `templates/index.html`, update the title and branding:
+
+```html
+<title>Your School RateMyRations</title>
+<h1>RateMyRations - Your School Name</h1>
+```
+
+#### 4. Update About Page
+
+In `templates/about.html`, customize the content for your school:
+
+```html
+<h1>About RateMyRations - Your School</h1>
+<p>RateMyRations helps students at Your School Name rate dining hall food...</p>
+```
+
+### Testing Your Configuration
+
+1. **Test menu fetching**:
+   ```bash
+   python menu_parser.py
+   ```
+
+2. **Check API responses**:
+   ```bash
+   curl "http://localhost:8000/api/menus?date=$(date +%Y-%m-%d)"
+   ```
+
+3. **Verify meal periods**:
+   - Ensure all meal periods are correctly identified
+   - Check that station names are properly categorized
+
+### Common Adaptations
+
+#### Different Meal Names
+If your school uses different meal names (e.g., "morning meal", "midday meal", "evening meal"):
+
+1. Update `MENUS_TO_FETCH` in `config.py`
+2. Update meal ordering in `script.js`
+3. Update any hardcoded meal references
+
+#### Multiple Campuses
+For schools with multiple campuses:
+
+1. Add campus identifiers to dining hall names
+2. Update the `MENUS_TO_FETCH` configuration
+3. Consider adding campus filtering in the UI
+
+#### Different Rating Systems
+If you want to change from 5-star to a different rating system:
+
+1. Update the star rating template in `index.html`
+2. Modify `renderStars()` function in `script.js`
+3. Update database schema if needed
+4. Adjust validation in `app.py`
+
+### Deployment Considerations
+
+- **Environment Variables**: Set `ADMIN_TOKEN` and other required variables
+- **Rate Limiting**: Adjust `RATE_LIMIT_DEFAULT` based on expected usage
+- **Caching**: Configure `CACHE_MINUTES` based on how often menus change
+- **Monitoring**: Set up monitoring for `/healthz` and `/readyz` endpoints
+
+### Example: Adapting for "State University"
+
+```python
+# config.py changes
+NUTRISLICE_BASE_URL = "https://stateuniversity.api.nutrislice.com/menu/api/weeks/school/"
+
+MENUS_TO_FETCH = [
+    ("Main Dining", "main-dining", "breakfast"),
+    ("Main Dining", "main-dining", "lunch"),
+    ("Main Dining", "main-dining", "dinner"),
+    ("Student Union", "student-union", "breakfast"),
+    ("Student Union", "student-union", "lunch"),
+    ("Student Union", "student-union", "dinner"),
+    ("Campus Cafe", "campus-cafe", "lunch"),
+    ("Campus Cafe", "campus-cafe", "dinner"),
+]
+
+IGNORE_CATEGORIES = [
+    "Beverages",
+    "Condiments",
+    "Coffee & Tea",
+    "Salad Bar Dressings",
+]
+```
+
 ## Contributing
 
 1. Fork the repository
