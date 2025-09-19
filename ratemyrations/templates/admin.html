@@ -215,6 +215,12 @@
             renderRatings(filtered);
         }
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         function renderRatings(ratings) {
             const tbody = document.getElementById('ratings-tbody');
             
@@ -225,16 +231,16 @@
 
             tbody.innerHTML = ratings.map(rating => `
                 <tr class="${rating.is_banned ? 'banned-user' : ''}">
-                    <td>${rating.food_name}</td>
-                    <td>${rating.dining_hall}</td>
-                    <td>${rating.station}</td>
-                    <td>${rating.meal}</td>
+                    <td>${escapeHtml(rating.food_name)}</td>
+                    <td>${escapeHtml(rating.dining_hall)}</td>
+                    <td>${escapeHtml(rating.station)}</td>
+                    <td>${escapeHtml(rating.meal)}</td>
                     <td>${renderStars(rating.rating)} (${rating.rating})</td>
-                    <td><code>${rating.user_id || 'N/A'}</code></td>
+                    <td><code>${escapeHtml(rating.user_id || 'N/A')}</code></td>
                     <td>
-                        <input type="text" class="nickname-input" value="${rating.nickname || ''}" 
-                               placeholder="Nickname" id="nickname-${rating.user_id}">
-                        <button class="nickname-btn" onclick="updateNickname('${rating.user_id}')">
+                        <input type="text" class="nickname-input" value="${escapeHtml(rating.nickname || '')}" 
+                               placeholder="Nickname" id="nickname-${escapeHtml(rating.user_id)}">
+                        <button class="nickname-btn" onclick="updateNickname('${escapeHtml(rating.user_id)}')">
                             Set
                         </button>
                     </td>
@@ -250,8 +256,8 @@
                             Delete
                         </button>
                         ${rating.is_banned ? 
-                            `<button class="unban-btn" onclick="unbanUser('${rating.user_id}')">Unban</button>` :
-                            `<button class="ban-btn" onclick="banUser('${rating.user_id}')">Ban</button>`
+                            `<button class="unban-btn" onclick="unbanUser('${escapeHtml(rating.user_id)}')">Unban</button>` :
+                            `<button class="ban-btn" onclick="banUser('${escapeHtml(rating.user_id)}')">Ban</button>`
                         }
                     </td>
                 </tr>

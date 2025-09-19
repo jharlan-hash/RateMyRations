@@ -129,7 +129,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function fetchMenus(date, openTabs = new Set()) {
-
         fetch(`/api/menus?date=${date}`)
             .then(response => {
                 if (!response.ok) {
@@ -293,22 +292,9 @@ document.addEventListener("DOMContentLoaded", function() {
                                 stationDiv.appendChild(menuList);
                                 mealContent.appendChild(stationDiv);
 
-                                stationTitle.addEventListener("click", function() {
-                                    const isActive = menuList.classList.toggle("active");
-                                    
-                                    // Close sibling stations at same level (within the same meal)
-                                    const siblingStations = mealContent.querySelectorAll('.station ul');
-                                    siblingStations.forEach(sib => {
-                                        if (sib !== menuList) {
-                                            sib.classList.remove('active');
-                                        }
-                                    });
-                                    
-                                    if (!isActive) {
-                                        const innerActive = menuList.querySelectorAll('.active');
-                                        innerActive.forEach(el => el.classList.remove('active'));
-                                    }
-                                });
+                                // Store data attributes for event delegation
+                                stationTitle.dataset.stationId = stationId;
+                                stationTitle.dataset.mealContent = mealId;
                             }
                         } else {
                             const noMenu = document.createElement("p");
@@ -317,42 +303,14 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         diningHallContent.appendChild(mealDiv)
 
-                        mealTitle.addEventListener("click", function() {
-                            const isActive = mealContent.classList.toggle("active");
-                            // Close sibling meals at same level
-                            const siblingMeals = mealDiv.parentElement.querySelectorAll('.meal .meal-content');
-                            siblingMeals.forEach(sib => {
-                                if (sib !== mealContent) {
-                                    sib.classList.remove('active');
-                                }
-                            });
-                            if (!isActive) {
-                                const innerActive = mealContent.querySelectorAll('.active');
-                                innerActive.forEach(el => el.classList.remove('active'));
-                            }
-                        });
+                        // Store data attributes for event delegation
+                        mealTitle.dataset.mealId = mealId;
+                        mealTitle.dataset.diningHallContent = diningHallId;
                     }
                     menusContainer.appendChild(diningHallDiv);
 
-                    diningHallTitle.addEventListener("click", function() {
-                        const isActive = diningHallContent.classList.toggle("active");
-                        
-                        // Close sibling dining halls at same level
-                        const siblingHalls = document.querySelectorAll('.dining-hall .dining-hall-content');
-                        siblingHalls.forEach(sib => {
-                            if (sib !== diningHallContent) {
-                                sib.classList.remove('active');
-                                // Also close all nested active elements
-                                const innerActive = sib.querySelectorAll('.active');
-                                innerActive.forEach(el => el.classList.remove('active'));
-                            }
-                        });
-                        
-                        if (!isActive) {
-                            const innerActive = diningHallContent.querySelectorAll('.active');
-                            innerActive.forEach(el => el.classList.remove('active'));
-                        }
-                    });
+                    // Store data attributes for event delegation
+                    diningHallTitle.dataset.diningHallId = diningHallId;
                 }
             })
             .catch(error => {
@@ -425,5 +383,72 @@ document.addEventListener("DOMContentLoaded", function() {
 
     dateInput.addEventListener("change", function() {
         fetchMenus(this.value);
+    });
+
+    // Event delegation to handle all clicks without memory leaks
+    document.addEventListener("click", function(event) {
+        const target = event.target;
+        
+        // Handle dining hall title clicks
+        if (target.tagName === "H2" && target.dataset.diningHallId) {
+            const diningHallContent = document.getElementById(target.dataset.diningHallId);
+            const isActive = diningHallContent.classList.toggle("active");
+            
+            // Close sibling dining halls at same level
+            const siblingHalls = document.querySelectorAll('.dining-hall .dining-hall-content');
+            siblingHalls.forEach(sib => {
+                if (sib !== diningHallContent) {
+                    sib.classList.remove('active');
+                    // Also close all nested active elements
+                    const innerActive = sib.querySelectorAll('.active');
+                    innerActive.forEach(el => el.classList.remove('active'));
+                }
+            });
+            
+            if (!isActive) {
+                const innerActive = diningHallContent.querySelectorAll('.active');
+                innerActive.forEach(el => el.classList.remove('active'));
+            }
+        }
+        
+        // Handle meal title clicks
+        else if (target.tagName === "H3" && target.dataset.mealId) {
+            const mealContent = document.getElementById(target.dataset.mealId);
+            const diningHallContent = document.getElementById(target.dataset.diningHallContent);
+            const isActive = mealContent.classList.toggle("active");
+            
+            // Close sibling meals at same level
+            const siblingMeals = diningHallContent.querySelectorAll('.meal .meal-content');
+            siblingMeals.forEach(sib => {
+                if (sib !== mealContent) {
+                    sib.classList.remove('active');
+                }
+            });
+            
+            if (!isActive) {
+                const innerActive = mealContent.querySelectorAll('.active');
+                innerActive.forEach(el => el.classList.remove('active'));
+            }
+        }
+        
+        // Handle station title clicks
+        else if (target.tagName === "H4" && target.dataset.stationId) {
+            const menuList = document.getElementById(target.dataset.stationId);
+            const mealContent = document.getElementById(target.dataset.mealContent);
+            const isActive = menuList.classList.toggle("active");
+            
+            // Close sibling stations at same level (within the same meal)
+            const siblingStations = mealContent.querySelectorAll('.station ul');
+            siblingStations.forEach(sib => {
+                if (sib !== menuList) {
+                    sib.classList.remove('active');
+                }
+            });
+            
+            if (!isActive) {
+                const innerActive = menuList.querySelectorAll('.active');
+                innerActive.forEach(el => el.classList.remove('active'));
+            }
+        }
     });
 });

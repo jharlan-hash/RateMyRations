@@ -30,6 +30,8 @@ limiter = Limiter(
 )
 
 # Cache configuration (LRU with TTL)
+import threading
+CACHE_LOCK = threading.RLock()
 CACHE = OrderedDict()
 CACHE_DURATION = timedelta(minutes=config.CACHE_MINUTES)
 CACHE_MAX_SIZE = config.CACHE_MAX_SIZE
@@ -56,12 +58,18 @@ def get_menu(dining_hall_name, school, meal, date):
     """
     Gets the menu for a specific dining hall, meal, and date, categorized by station.
     """
-    url = f"https://dininguiowa.api.nutrislice.com/menu/api/weeks/school/{school}/menu-type/{meal}/{date.year}/{date.month}/{date.day}/?format=json"
+    url = f"{config.NUTRISLICE_BASE_URL}/menu/api/weeks/school/{school}/menu-type/{meal}/{date.year}/{date.month}/{date.day}/?format=json"
     try:
         resp = HTTP.get(url, timeout=(3, 10))
         if resp.status_code != 200:
-            raise requests.HTTPError(f"{resp.status_code}")
+            print(f"HTTP {resp.status_code} error fetching menu for {dining_hall_name} - {meal.capitalize()}")
+            return (dining_hall_name, meal, {})
+        
         data = resp.json()
+        if not isinstance(data, dict) or "days" not in data:
+            print(f"Invalid response format for {dining_hall_name} - {meal.capitalize()}")
+            return (dining_hall_name, meal, {})
+            
         for day in data.get("days", []):
             if day.get("date") == date.strftime("%Y-%m-%d"):
                 categorized_menu = {}
@@ -82,15 +90,26 @@ def get_menu(dining_hall_name, school, meal, date):
                             categorized_menu[station_name].append({"id": food_id, "name": food_name, "meal": meal})
 
                 if not categorized_menu:
-                    print(f"Menu not found for {dining_hall_name} - {meal.capitalize()} on {date.strftime('%Y-%m-%d')}")
+                    print(f"No menu items found for {dining_hall_name} - {meal.capitalize()} on {date.strftime('%Y-%m-%d')}")
                     return (dining_hall_name, meal, {})
 
                 return (dining_hall_name, meal, categorized_menu)
+                
+        print(f"No menu data for date {date.strftime('%Y-%m-%d')} for {dining_hall_name} - {meal.capitalize()}")
+        return (dining_hall_name, meal, {})
+        
+    except requests.exceptions.Timeout:
+        print(f"Timeout fetching menu for {dining_hall_name} - {meal.capitalize()}")
+        return (dining_hall_name, meal, {})
+    except requests.exceptions.RequestException as e:
+        print(f"Request error fetching menu for {dining_hall_name} - {meal.capitalize()}: {e}")
+        return (dining_hall_name, meal, {})
+    except (KeyError, TypeError, ValueError) as e:
+        print(f"Data parsing error for {dining_hall_name} - {meal.capitalize()}: {e}")
+        return (dining_hall_name, meal, {})
     except Exception as e:
-        print(f"Error fetching menu for {dining_hall_name} - {meal.capitalize()}: {e}")
-
-    print(f"Menu not found for {dining_hall_name} - {meal.capitalize()} on {date.strftime('%Y-%m-%d')}")
-    return (dining_hall_name, meal, {})
+        print(f"Unexpected error fetching menu for {dining_hall_name} - {meal.capitalize()}: {e}")
+        return (dining_hall_name, meal, {})
 
 def fetch_all_menus(date_str):
     date = datetime.strptime(date_str, "%Y-%m-%d")
@@ -221,29 +240,45 @@ def get_menus_route():
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
 
     # Enforce date range if configured
-    if config.MAX_DAYS_AHEAD is not None:
-        if (date_obj - datetime.now()).days > config.MAX_DAYS_AHEAD:
-            return jsonify({"error": "Date too far in the future."}), 400
-
     now = datetime.now()
-    cached = CACHE.get(date_str)
-    if cached and now - cached["timestamp"] < CACHE_DURATION and not refresh:
-        # Move to end to mark as most-recently used
-        CACHE.move_to_end(date_str)
-        return jsonify(cached["data"]) 
+    days_diff = (date_obj - now).days
+    
+    if config.MAX_DAYS_AHEAD is not None and days_diff > config.MAX_DAYS_AHEAD:
+        return jsonify({"error": "Date too far in the future."}), 400
+    
+    # Don't allow dates too far in the past (more than 30 days ago)
+    if days_diff < -30:
+        return jsonify({"error": "Date too far in the past. Please select a date within the last 30 days."}), 400
+    
+    # Thread-safe cache access
+    with CACHE_LOCK:
+        cached = CACHE.get(date_str)
+        if cached and now - cached["timestamp"] < CACHE_DURATION and not refresh:
+            # Move to end to mark as most-recently used
+            CACHE.move_to_end(date_str)
+            return jsonify(cached["data"]) 
 
     try:
         menus = fetch_all_menus(date_str)
         payload = {"data": menus, "timestamp": now}
-        CACHE[date_str] = payload
-        CACHE.move_to_end(date_str)
-        while len(CACHE) > CACHE_MAX_SIZE:
-            CACHE.popitem(last=False)
+        
+        # Thread-safe cache update
+        with CACHE_LOCK:
+            CACHE[date_str] = payload
+            CACHE.move_to_end(date_str)
+            while len(CACHE) > CACHE_MAX_SIZE:
+                CACHE.popitem(last=False)
+        
         return jsonify(menus)
     except Exception as e:
         print(f"Error fetching menus for {date_str}: {e}")
-        if cached:
-            return jsonify({"stale": True, **cached["data"]}), 200
+        
+        # Thread-safe cache access for fallback
+        with CACHE_LOCK:
+            cached = CACHE.get(date_str)
+            if cached:
+                return jsonify({"stale": True, **cached["data"]}), 200
+        
         return jsonify({"error": "Failed to retrieve menus"}), 502
 
 @app.route("/api/ratings")
@@ -264,13 +299,34 @@ def internal_error_handler(e):
 @app.route("/api/rate", methods=["POST"])
 def rate_route():
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON data"}), 400
+    
     user_id = data.get("user_id")
+    food_id = data.get("food_id")
+    rating = data.get("rating")
+    
+    # Validate required fields
+    if not food_id:
+        return jsonify({"error": "food_id is required"}), 400
+    
+    # Validate rating value
+    if rating is None:
+        return jsonify({"error": "rating is required"}), 400
+    
+    try:
+        rating = int(rating)
+    except (ValueError, TypeError):
+        return jsonify({"error": "rating must be a number"}), 400
+    
+    if rating not in [0, 1, 2, 3, 4, 5]:
+        return jsonify({"error": "rating must be between 0 and 5"}), 400
     
     # Check if user is banned
     if user_id and database.is_user_banned(user_id):
         return jsonify({"error": "User is banned"}), 403
     
-    database.add_rating(data["food_id"], user_id, data["rating"])
+    database.add_rating(food_id, user_id, rating)
     return jsonify({"status": "success"})
 
 @app.route("/api/delete-ratings", methods=["POST"])
@@ -296,12 +352,13 @@ def warm_cache():
         date_str = datetime.now().strftime("%Y-%m-%d")
         menus = fetch_all_menus(date_str)
         
-        # Store in cache
-        CACHE[date_str] = {
-            "data": menus,
-            "timestamp": datetime.now()
-        }
-        CACHE.move_to_end(date_str)
+        # Store in cache (thread-safe)
+        with CACHE_LOCK:
+            CACHE[date_str] = {
+                "data": menus,
+                "timestamp": datetime.now()
+            }
+            CACHE.move_to_end(date_str)
         
         return jsonify({
             "status": "success", 

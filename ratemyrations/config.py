@@ -5,7 +5,9 @@ RATE_LIMIT_DEFAULT = os.environ.get("RATE_LIMIT_DEFAULT", "10 per minute")
 RATE_LIMIT_STORAGE_URI = os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://")
 
 # Admin token for destructive endpoints
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "change-me")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
+if not ADMIN_TOKEN:
+    raise ValueError("ADMIN_TOKEN environment variable must be set for security")
 ENABLE_DELETE_RATINGS = os.environ.get("ENABLE_DELETE_RATINGS", "false").lower() == "true"
 
 # Caching
@@ -14,6 +16,9 @@ CACHE_MAX_SIZE = int(os.environ.get("CACHE_MAX_SIZE", "64"))
 
 # Date constraints
 MAX_DAYS_AHEAD = int(os.environ.get("MAX_DAYS_AHEAD", "14"))
+
+# API Configuration
+NUTRISLICE_BASE_URL = os.environ.get("NUTRISLICE_BASE_URL", "https://dininguiowa.api.nutrislice.com")
 
 # Nutrislice categories to ignore
 IGNORE_CATEGORIES = [
