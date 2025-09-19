@@ -212,10 +212,25 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (items && items.length > 0) {
                         for (const item of items) {
                             // Use the original meal slug from the menu data, not normalized display name
-                            const foodKey = `${item.name}_${station}_${diningHall}_${meal}`;
+                            // We need to map back to the original meal slug used in the database
+                            let originalMealSlug = meal;
+                            if (diningHall === 'Catlett') {
+                                if (meal === 'breakfast') originalMealSlug = 'breakfast-2';
+                                else if (meal === 'lunch') originalMealSlug = 'lunch-2';
+                                else if (meal === 'dinner') originalMealSlug = 'dinner-2';
+                            } else if (diningHall === 'Hillcrest') {
+                                if (meal === 'breakfast') originalMealSlug = 'breakfast-3';
+                                else if (meal === 'lunch') originalMealSlug = 'lunch-3';
+                                // dinner stays 'dinner' for Hillcrest
+                            } else if (diningHall === 'Burge') {
+                                if (meal === 'dinner') originalMealSlug = 'dinner-3';
+                                // breakfast and lunch stay the same for Burge
+                            }
+                            
+                            const foodKey = `${item.name}_${station}_${diningHall}_${originalMealSlug}`;
                             menuFoodKeys.add(foodKey);
                             
-                            // Debug logging for Catlett items
+                            // Debug logging for Catlett items (can be removed after testing)
                             if (diningHall === 'Catlett') {
                                 console.log(`Debug Catlett - ${item.name} in ${station} (${meal}):`, foodKey);
                                 const matchingRating = ratings.foods[foodKey];

@@ -116,7 +116,7 @@ def add_rating(food_id, user_id, rating, date=None):
         from datetime import datetime
         date = datetime.now().strftime("%Y-%m-%d")
     
-    # Debug logging
+    # Debug logging (can be removed after testing)
     print(f"Debug DB - add_rating: food_id={food_id}, user_id={user_id}, rating={rating}, date={date}")
     
     conn = sqlite3.connect(DB_FILE)
@@ -216,7 +216,7 @@ def get_ratings(date=None):
         key = f"{row[0]}_{row[1]}_{row[2]}_{row[3]}"
         food_ratings[key] = {"avg_rating": row[4], "rating_count": row[5]}
         
-        # Debug logging for Catlett items
+        # Debug logging for Catlett items (can be removed after testing)
         if row[2] == 'Catlett':  # dining_hall
             print(f"Debug DB - Catlett food: {key} -> avg: {row[4]}, count: {row[5]}")
 
