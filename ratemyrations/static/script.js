@@ -48,9 +48,20 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function fetchRatings() {
         return fetch(`/api/ratings?date=${dateInput.value}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 ratings = data;
+                return data;
+            })
+            .catch(error => {
+                console.error('Error fetching ratings:', error);
+                // Don't update ratings if fetch fails - keep existing data
+                throw error;
             });
     }
 
@@ -88,6 +99,11 @@ document.addEventListener("DOMContentLoaded", function() {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ food_id: foodId, rating: newRating, user_id: browserId, date: dateInput.value })
+                    }).then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
                     }).then(() => {
                         if (newRating === 0) {
                             delete userRatings[foodId];
@@ -96,8 +112,24 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
                         
-                        // Simple approach: re-render everything
-                        fetchRatings().then(() => fetchMenus(dateInput.value, openTabs));
+                        console.log('Rating updated successfully, fetching fresh ratings...');
+                        // Update ratings first, then re-render menus
+                        return fetchRatings();
+                    }).then(() => {
+                        console.log('Fresh ratings fetched, re-rendering menus...');
+                        // Only re-render menus if ratings fetch succeeded
+                        fetchMenus(dateInput.value, openTabs);
+                    }).catch(error => {
+                        console.error('Error updating rating:', error);
+                        // Show user-friendly error message
+                        alert('Failed to update rating. Please try again.');
+                        // Revert the star selection
+                        star.classList.remove('active');
+                        if (newRating > 1) {
+                            for (let i = 1; i < newRating; i++) {
+                                stars[i - 1].classList.remove('active');
+                            }
+                        }
                     }).finally(() => {
                         delete star.dataset._debouncing;
                     });
@@ -156,6 +188,12 @@ document.addEventListener("DOMContentLoaded", function() {
                             // Use the original meal slug from the menu data, not normalized display name
                             const foodKey = `${item.name}_${station}_${diningHall}_${meal}`;
                             menuFoodKeys.add(foodKey);
+                            
+                            // Debug logging for specific item
+                            if (item.name.toLowerCase().includes('sunny') && diningHall === 'Catlett' && meal === 'breakfast') {
+                                console.log('Debug - Sunny Side Up food key:', foodKey);
+                                console.log('Debug - Available ratings keys:', Object.keys(ratings.foods).filter(k => k.toLowerCase().includes('sunny')));
+                            }
                         }
                     }
                 }
@@ -451,7 +489,18 @@ document.addEventListener("DOMContentLoaded", function() {
             .catch(error => {
                 console.error('Error fetching menus:', error);
                 const menusContainer = document.getElementById("menus-container");
-                menusContainer.innerHTML = `<p class="error-message">Could not load the menu at this time. Please try again later.</p>`;
+                let errorMessage = "Could not load the menu at this time. Please try again later.";
+                
+                // Provide more specific error messages
+                if (error.message.includes('HTTP 500')) {
+                    errorMessage = "Server error occurred. Please try again later.";
+                } else if (error.message.includes('HTTP 404')) {
+                    errorMessage = "Menu not found for the selected date.";
+                } else if (error.message.includes('Network')) {
+                    errorMessage = "Network error. Please check your connection and try again.";
+                }
+                
+                menusContainer.innerHTML = `<p class="error-message">${errorMessage}</p>`;
             });
     }
 
