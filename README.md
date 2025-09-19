@@ -7,21 +7,26 @@ Check out my hosted version at https://rations.jacksovern.xyz
 ## Features
 
 - **Menu Display**: View daily menus from all three UIowa dining halls (Burge, Catlett, Hillcrest)
-- **Food Rating System**: Rate individual food items with a 5-star system
+- **Dual Rating System**: See both your personal rating and community average for each food item
+- **Per-Browser Ratings**: One rating per food item per browser (can re-rate, but not multiple initial ratings)
 - **Date Selection**: Browse menus for different dates (up to 14 days ahead)
 - **Real-time Data**: Fetches live menu data from the University of Iowa's Nutrislice API
-- **Caching**: Implements intelligent caching to reduce API calls and improve performance
-- **Rate Limiting**: Built-in rate limiting to prevent abuse
+- **Smart Caching**: LRU + TTL caching with automatic cache warming for Gunicorn workers
+- **Rate Limiting**: Built-in rate limiting to prevent abuse (configurable, supports Redis)
+- **Admin Console**: Full admin interface for managing ratings, users, and nicknames
+- **Health Monitoring**: `/healthz` and `/readyz` endpoints for production monitoring
+- **Collapsible Interface**: Expandable dining halls, meals, and stations
 - **Responsive Design**: Mobile-friendly interface
 
 ## Technology Stack
 
-- **Backend**: Flask (Python)
-- **Database**: SQLite (for storing ratings)
-- **Frontend**: HTML, CSS, JavaScript
-- **Deployment**: Gunicorn WSGI server
-- **Caching**: In-memory LRU cache with TTL
-- **Rate Limiting**: Flask-Limiter (supports Redis for distributed deployments)
+- **Backend**: Flask (Python) with WSGI support
+- **Database**: SQLite with WAL mode and retry logic for concurrency
+- **Frontend**: HTML, CSS, JavaScript with localStorage for user data
+- **Deployment**: Gunicorn WSGI server with automated cache warming
+- **Caching**: In-memory LRU + TTL cache (supports Redis for distributed deployments)
+- **Rate Limiting**: Flask-Limiter with configurable limits
+- **Security**: Input validation, SQL injection protection, admin token authentication
 
 ## Installation
 
@@ -56,11 +61,11 @@ The application will be available at `http://localhost:8000`
 The application can be configured using environment variables:
 
 ### Rate Limiting
-- `RATE_LIMIT_DEFAULT`: Default rate limit (default: "10 per minute")
+- `RATE_LIMIT_DEFAULT`: Default rate limit (default: "60 per minute")
 - `RATE_LIMIT_STORAGE_URI`: Storage backend for rate limiting (default: "memory://", supports Redis)
 
 ### Admin Features
-- `ADMIN_TOKEN`: Token for admin operations (default: "change-me")
+- `ADMIN_TOKEN`: Token for admin operations (required environment variable)
 - `ENABLE_DELETE_RATINGS`: Enable rating deletion endpoint (default: "false")
 
 ### Caching
@@ -75,15 +80,23 @@ The application can be configured using environment variables:
 ### Public Endpoints
 
 - `GET /` - Main application interface
+- `GET /about` - About page with project information
 - `GET /api/menus?date=YYYY-MM-DD&refresh=true` - Get menus for a specific date
-- `GET /api/ratings` - Get all food ratings
-- `POST /api/rate` - Submit a food rating
+- `GET /api/ratings?date=YYYY-MM-DD` - Get all food ratings (optionally filtered by date)
+- `POST /api/rate` - Submit a food rating (per-browser, one rating per food)
 - `GET /healthz` - Health check endpoint
-- `GET /readyz` - Readiness check endpoint
+- `GET /readyz` - Readiness check endpoint (includes database and Redis connectivity)
+- `GET /warm-cache` - Warm up cache for Gunicorn workers
 
 ### Admin Endpoints
 
-- `POST /api/delete-ratings` - Delete all ratings (requires admin token)
+- `GET /admin?token=ADMIN_TOKEN` - Admin console interface
+- `GET /api/admin/ratings?token=ADMIN_TOKEN` - Get all ratings with details
+- `POST /api/admin/delete-rating` - Delete a specific rating
+- `POST /api/admin/update-nickname` - Set user nickname
+- `POST /api/admin/ban-user` - Ban a user
+- `POST /api/admin/unban-user` - Unban a user
+- `POST /api/delete-ratings` - Delete all ratings (disabled by default, requires admin token)
 
 ## Project Structure
 
@@ -92,17 +105,22 @@ RateMyRations/
 ├── ratemyrations/           # Main application package
 │   ├── app.py              # Flask application and API routes
 │   ├── config.py           # Configuration settings
-│   ├── database.py         # Database operations
-│   ├── wsgi.py            # WSGI entry point
+│   ├── database.py         # Database operations with WAL mode
+│   ├── wsgi.py            # WSGI entry point for Gunicorn
 │   ├── requirements.txt   # Python dependencies
 │   ├── static/            # Static assets
-│   │   ├── styles.css     # CSS styles
-│   │   └── script.js      # Frontend JavaScript
+│   │   ├── styles.css     # CSS styles with responsive design
+│   │   └── script.js      # Frontend JavaScript with localStorage
 │   ├── templates/         # HTML templates
-│   │   └── index.html     # Main page template
-│   └── ratings.db         # SQLite database
+│   │   ├── index.html     # Main page template
+│   │   ├── about.html     # About page template
+│   │   └── admin.html     # Admin console template
+│   └── ratings.db         # SQLite database (auto-created)
 ├── get_menus.py           # Utility script to open menu URLs
 ├── menu_parser.py         # Standalone menu parsing utility
+├── warm_cache.py          # Cache warming script for Gunicorn
+├── start.sh              # Production startup script
+├── API_DOCUMENTATION.md   # Comprehensive API documentation
 └── urls                   # Menu URL references
 ```
 
@@ -135,16 +153,31 @@ cd ratemyrations
 gunicorn -w 4 -b 0.0.0.0:8000 ratemyrations.wsgi:application
 ```
 
+### Using the Production Startup Script
+
+```bash
+./start.sh
+```
+
+This script will:
+- Start Gunicorn with 4 workers
+- Wait for the application to be ready
+- Warm the cache for all workers
+- Provide process monitoring
+
 ### Docker Deployment
 
 The application includes SELinux policies (`gunicorn.pp`, `gunicorn.te`) for containerized deployments.
 
 ### Production Considerations
 
-- Set a strong `ADMIN_TOKEN` environment variable
-- Configure Redis for distributed rate limiting: `RATE_LIMIT_STORAGE_URI=redis://host:port/db`
-- Use a reverse proxy (nginx) for SSL termination
-- Monitor the `/healthz` and `/readyz` endpoints
+- **Required**: Set a strong `ADMIN_TOKEN` environment variable
+- **Optional**: Configure Redis for distributed rate limiting: `RATE_LIMIT_STORAGE_URI=redis://host:port/db`
+- **Security**: Use a reverse proxy (nginx) for SSL termination
+- **Monitoring**: Monitor the `/healthz` and `/readyz` endpoints
+- **Performance**: Use the `start.sh` script for automatic cache warming
+- **Database**: SQLite WAL mode provides good concurrency for moderate load
+- **Rate Limiting**: Default is 60 requests/minute per IP (configurable)
 
 ## Contributing
 

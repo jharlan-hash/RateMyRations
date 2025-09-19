@@ -14,9 +14,22 @@
 
 RateMyRations is a Flask-based web application that allows users to view University of Iowa dining hall menus and rate food items. The application consists of:
 
-- **Backend**: Flask API server with SQLite database
-- **Frontend**: HTML/CSS/JavaScript interface
-- **Utilities**: Menu fetching and cache warming scripts
+- **Backend**: Flask API server with SQLite database (WAL mode for concurrency)
+- **Frontend**: HTML/CSS/JavaScript interface with localStorage for user data
+- **Admin Console**: Full-featured admin interface for managing ratings and users
+- **Utilities**: Menu fetching, cache warming, and production startup scripts
+
+### Key Features
+
+- **Dual Rating System**: Shows both personal and community ratings for each food item
+- **Per-Browser Ratings**: One rating per food per browser (prevents spam, allows re-rating)
+- **Smart Caching**: LRU + TTL cache with automatic warming for Gunicorn workers
+- **User Management**: Admin can set nicknames, ban/unban users
+- **Health Monitoring**: `/healthz` and `/readyz` endpoints for production monitoring
+- **Collapsible Interface**: Expandable dining halls, meals, and stations
+- **Rate Limiting**: Configurable rate limiting (default: 60 requests/minute)
+- **Input Validation**: Comprehensive validation and error handling
+- **Database Safety**: SQLite WAL mode with retry logic for concurrency
 
 ## Backend API Endpoints
 
@@ -65,6 +78,9 @@ curl "http://localhost:8000/api/menus?date=2024-01-15&refresh=true"
 
 #### `GET /api/ratings`
 **Description**: Get all food ratings aggregated by different levels  
+**Parameters**:
+- `date` (optional): Date in YYYY-MM-DD format to filter ratings
+
 **Response**: JSON object with ratings data
 ```json
 {
@@ -99,10 +115,11 @@ curl "http://localhost:8000/api/menus?date=2024-01-15&refresh=true"
 **Example**:
 ```bash
 curl http://localhost:8000/api/ratings
+curl "http://localhost:8000/api/ratings?date=2024-01-15"
 ```
 
 #### `POST /api/rate`
-**Description**: Submit a rating for a food item  
+**Description**: Submit a rating for a food item (per-browser, one rating per food)  
 **Headers**: `Content-Type: application/json`  
 **Body**:
 ```json
@@ -113,10 +130,21 @@ curl http://localhost:8000/api/ratings
 }
 ```
 
+**Parameters**:
+- `food_id` (int): Food item ID (required)
+- `rating` (int): Rating 1-5, or 0 to delete rating (required)
+- `user_id` (str): Browser/user identifier (required)
+
 **Response**:
 ```json
 {"status": "success"}
 ```
+
+**Notes**:
+- Each browser can only have one rating per food item
+- Re-rating is allowed (updates existing rating)
+- Rating 0 deletes the user's rating
+- Banned users cannot submit ratings
 
 **Example**:
 ```bash
@@ -144,6 +172,11 @@ curl -X POST http://localhost:8000/api/rate \
   "redis": "ok"
 }
 ```
+
+**Notes**:
+- Checks SQLite database connectivity
+- Checks Redis connectivity (if configured)
+- Returns 503 if any service is unavailable
 
 ### Cache Management
 
@@ -186,7 +219,10 @@ curl "http://localhost:8000/admin?token=your_admin_token"
     "food_name": "Pizza",
     "station": "Main Station",
     "dining_hall": "Burge",
-    "meal": "lunch"
+    "meal": "lunch",
+    "date": "2024-01-15",
+    "nickname": "John Doe",
+    "is_banned": false
   }
 ]
 ```
@@ -204,13 +240,73 @@ curl "http://localhost:8000/admin?token=your_admin_token"
 }
 ```
 
+#### `POST /api/admin/update-nickname`
+**Description**: Set or update a user's nickname  
+**Headers**: 
+- `Content-Type: application/json`
+- `X-Admin-Token: your_admin_token`
+
+**Body**:
+```json
+{
+  "user_id": "user_123",
+  "nickname": "John Doe"
+}
+```
+
+**Response**:
+```json
+{"status": "success"}
+```
+
+#### `POST /api/admin/ban-user`
+**Description**: Ban a user from submitting ratings  
+**Headers**: 
+- `Content-Type: application/json`
+- `X-Admin-Token: your_admin_token`
+
+**Body**:
+```json
+{
+  "user_id": "user_123",
+  "reason": "Spam ratings"
+}
+```
+
+**Response**:
+```json
+{"status": "success"}
+```
+
+#### `POST /api/admin/unban-user`
+**Description**: Unban a user  
+**Headers**: 
+- `Content-Type: application/json`
+- `X-Admin-Token: your_admin_token`
+
+**Body**:
+```json
+{
+  "user_id": "user_123"
+}
+```
+
+**Response**:
+```json
+{"status": "success"}
+```
+
 #### `POST /api/delete-ratings`
-**Description**: Delete all ratings (if enabled)  
+**Description**: Delete all ratings (disabled by default)  
 **Headers**: `X-Admin-Token: your_admin_token`  
 **Response**:
 ```json
 {"status": "success"}
 ```
+
+**Notes**:
+- This endpoint is disabled by default (`ENABLE_DELETE_RATINGS=false`)
+- Requires admin token authentication
 
 ## Database Functions
 
@@ -238,17 +334,19 @@ database.create_tables()
 food_id = database.add_food("Pizza", "Main Station", "Burge", "lunch")
 ```
 
-#### `add_rating(food_id, user_id, rating)`
+#### `add_rating(food_id, user_id, rating, date=None)`
 **Description**: Adds or updates a rating for a food item  
 **Parameters**:
 - `food_id` (int): Food item ID
-- `user_id` (str): User identifier (can be None for legacy)
+- `user_id` (str): User identifier (required)
 - `rating` (int): Rating 1-5 (0 to delete rating)
+- `date` (str, optional): Date in YYYY-MM-DD format (defaults to today)
 
 **Example**:
 ```python
 database.add_rating(123, "user_123", 4)
 database.add_rating(123, "user_123", 0)  # Delete rating
+database.add_rating(123, "user_123", 4, "2024-01-15")  # Specific date
 ```
 
 #### `get_ratings()`
@@ -288,6 +386,55 @@ success = database.delete_rating_by_id(123)
 database.delete_all_ratings()
 ```
 
+### User Management Functions
+
+#### `update_user_nickname(user_id, nickname)`
+**Description**: Sets or updates a user's nickname  
+**Parameters**:
+- `user_id` (str): User identifier
+- `nickname` (str): Display nickname
+
+**Returns**: `bool` - True if updated, False if not found  
+**Example**:
+```python
+success = database.update_user_nickname("user_123", "John Doe")
+```
+
+#### `ban_user(user_id, reason=None)`
+**Description**: Bans a user from submitting ratings  
+**Parameters**:
+- `user_id` (str): User identifier
+- `reason` (str, optional): Ban reason
+
+**Returns**: `bool` - True if banned, False if not found  
+**Example**:
+```python
+success = database.ban_user("user_123", "Spam ratings")
+```
+
+#### `unban_user(user_id)`
+**Description**: Unbans a user  
+**Parameters**:
+- `user_id` (str): User identifier
+
+**Returns**: `bool` - True if unbanned, False if not found  
+**Example**:
+```python
+success = database.unban_user("user_123")
+```
+
+#### `is_user_banned(user_id)`
+**Description**: Checks if a user is banned  
+**Parameters**:
+- `user_id` (str): User identifier
+
+**Returns**: `bool` - True if banned, False if not banned or not found  
+**Example**:
+```python
+if database.is_user_banned("user_123"):
+    print("User is banned")
+```
+
 ## Frontend Components
 
 ### JavaScript Functions
@@ -314,17 +461,37 @@ fetchMenus("2024-01-15", new Set(["dining-hall-content-Burge"]));
 ```
 
 #### `renderStars(rating, foodId, isInteractive)`
-**Description**: Renders star rating component  
+**Description**: Renders dual star rating component (community + user rating)  
 **Parameters**:
-- `rating` (number): Rating value (0-5)
+- `rating` (number): Community rating value (0-5)
 - `foodId` (number): Food ID for interactive ratings
 - `isInteractive` (boolean): Whether stars are clickable
 
-**Returns**: DOM element  
+**Returns**: DOM element with two rows:
+- Community rating (read-only with average and count)
+- User rating (interactive)
+
 **Example**:
 ```javascript
 const stars = renderStars(4.2, 123, true);
 document.body.appendChild(stars);
+```
+
+#### `filterRatingsByMenu(menuData, ratings)`
+**Description**: Filters ratings based on actual menu items for the day  
+**Parameters**:
+- `menuData` (object): Menu data from API
+- `ratings` (object): All ratings data
+
+**Returns**: Filtered ratings object  
+**Notes**:
+- Handles meal slug mapping (e.g., `lunch` → `lunch-2` for Catlett)
+- Recalculates aggregate ratings for stations, meals, and dining halls
+- Only shows ratings for foods actually available on the selected date
+
+**Example**:
+```javascript
+const filteredRatings = filterRatingsByMenu(menuData, ratings);
 ```
 
 #### `getCurrentMeal(diningHall)`
@@ -433,11 +600,11 @@ python warm_cache.py http://localhost:8000
 ### Environment Variables
 
 #### Rate Limiting
-- `RATE_LIMIT_DEFAULT`: Default rate limit (default: "10 per minute")
-- `RATE_LIMIT_STORAGE_URI`: Rate limit storage (default: "memory://")
+- `RATE_LIMIT_DEFAULT`: Default rate limit (default: "60 per minute")
+- `RATE_LIMIT_STORAGE_URI`: Rate limit storage (default: "memory://", supports Redis)
 
 #### Admin Settings
-- `ADMIN_TOKEN`: Admin authentication token (default: "change-me")
+- `ADMIN_TOKEN`: Admin authentication token (required environment variable)
 - `ENABLE_DELETE_RATINGS`: Enable rating deletion (default: "false")
 
 #### Caching
@@ -452,11 +619,11 @@ python warm_cache.py http://localhost:8000
 #### Constants
 ```python
 # Rate limiting
-RATE_LIMIT_DEFAULT = "10 per minute"
+RATE_LIMIT_DEFAULT = "60 per minute"
 RATE_LIMIT_STORAGE_URI = "memory://"
 
 # Admin settings
-ADMIN_TOKEN = "change-me"
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")  # Required environment variable
 ENABLE_DELETE_RATINGS = False
 
 # Caching
@@ -466,19 +633,30 @@ CACHE_MAX_SIZE = 64
 # Date constraints
 MAX_DAYS_AHEAD = 14
 
-# Ignored categories
+# Nutrislice API
+NUTRISLICE_BASE_URL = "https://dininguiowa.api.nutrislice.com/menu/api/weeks/school/"
+
+# Ignored categories (beverages, condiments, etc.)
 IGNORE_CATEGORIES = [
     "Beverages",
-    "Condiments",
+    "Condiments", 
     "Breads & Spreads, Cereal, and Waffle Bar",
+    "Coffee Bar",
+    "Condiments & Dressings",
     # ... more categories
 ]
 
-# Menu configuration
+# Menu configuration (dining hall, school ID, meal)
 MENUS_TO_FETCH = [
     ("Burge", "burge-market", "breakfast"),
     ("Burge", "burge-market", "lunch"),
-    # ... more menu configurations
+    ("Burge", "burge-market", "dinner-3"),
+    ("Catlett", "catlett-marketplace", "breakfast-2"),
+    ("Catlett", "catlett-marketplace", "lunch-2"),
+    ("Catlett", "catlett-marketplace", "dinner-2"),
+    ("Hillcrest", "hillcrest-marketplace", "breakfast-3"),
+    ("Hillcrest", "hillcrest-marketplace", "lunch-3"),
+    ("Hillcrest", "hillcrest-marketplace", "dinner"),
 ]
 ```
 
