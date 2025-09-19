@@ -283,7 +283,8 @@ def get_menus_route():
 
 @app.route("/api/ratings")
 def get_ratings_route():
-    ratings = database.get_ratings()
+    date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
+    ratings = database.get_ratings(date_str)
     return jsonify(ratings)
 
 
@@ -303,6 +304,7 @@ def rate_route():
         return jsonify({"error": "Invalid JSON data"}), 400
     
     user_id = data.get("user_id")
+    date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
     food_id = data.get("food_id")
     rating = data.get("rating")
     
@@ -326,7 +328,7 @@ def rate_route():
     if user_id and database.is_user_banned(user_id):
         return jsonify({"error": "User is banned"}), 403
     
-    database.add_rating(food_id, user_id, rating)
+    database.add_rating(food_id, user_id, rating, date_str)
     return jsonify({"status": "success"})
 
 @app.route("/api/delete-ratings", methods=["POST"])

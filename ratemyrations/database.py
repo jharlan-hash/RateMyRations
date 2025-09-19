@@ -40,6 +40,16 @@ def create_tables():
         c.execute("SELECT user_id FROM ratings LIMIT 1")
     except sqlite3.OperationalError:
         c.execute("ALTER TABLE ratings ADD COLUMN user_id TEXT")
+    
+    # Ensure date column exists for older DBs
+    try:
+        c.execute("SELECT date FROM ratings LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE ratings ADD COLUMN date TEXT")
+        # Set default date for existing ratings (today)
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        c.execute("UPDATE ratings SET date = ? WHERE date IS NULL", (today,))
 
     # Unique per-user per-food ratings (ignore rows where user_id is NULL)
     c.execute("""
@@ -70,139 +80,134 @@ def create_tables():
 
 def add_food(name, station, dining_hall, meal):
     """Adds a food item to the database and returns its ID."""
-    import time
-    import random
-    
-    for attempt in range(5):  # Increased retry attempts
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # Retry on database is locked
+    for _ in range(3):
         try:
-            # Use a transaction to ensure atomicity
-            c.execute("BEGIN IMMEDIATE")
-            
-            # Try to insert first
             c.execute(
                 "INSERT OR IGNORE INTO foods (name, station, dining_hall, meal) VALUES (?, ?, ?, ?)",
                 (name, station, dining_hall, meal),
             )
-            
-            if c.rowcount > 0:
-                food_id = c.lastrowid
-                c.execute("COMMIT")
-                conn.close()
-                return food_id
-            else:
-                # If no row was inserted, try to get existing ID
-                c.execute(
-                    "SELECT id FROM foods WHERE name = ? AND station = ? AND dining_hall = ? AND meal = ?",
-                    (name, station, dining_hall, meal),
-                )
-                row = c.fetchone()
-                if row:
-                    food_id = row[0]
-                    c.execute("COMMIT")
-                    conn.close()
-                    return food_id
-                else:
-                    # This shouldn't happen, but handle it gracefully
-                    c.execute("COMMIT")
-                    conn.close()
-                    return None
-                    
+            break
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
-                c.execute("ROLLBACK")
-                conn.close()
-                # Exponential backoff with jitter
-                wait_time = (0.1 * (2 ** attempt)) + random.uniform(0, 0.1)
-                time.sleep(wait_time)
+                import time; time.sleep(0.1)
                 continue
             else:
-                c.execute("ROLLBACK")
-                conn.close()
                 raise
-        except Exception as e:
-            c.execute("ROLLBACK")
-            conn.close()
-            raise
-    
-    # If all retries failed
-    raise sqlite3.OperationalError("Database locked after multiple retries")
+    if c.rowcount:
+        food_id = c.lastrowid
+    else:
+        c.execute(
+            "SELECT id FROM foods WHERE name = ? AND station = ? AND dining_hall = ? AND meal = ?",
+            (name, station, dining_hall, meal),
+        )
+        row = c.fetchone()
+        food_id = row[0] if row else None
+    conn.commit()
+    conn.close()
+    return food_id
 
 
-def add_rating(food_id, user_id, rating):
+def add_rating(food_id, user_id, rating, date=None):
     """Upserts a per-user rating. If rating == 0, delete the user's rating."""
-    import time
-    import random
+    if date is None:
+        from datetime import datetime
+        date = datetime.now().strftime("%Y-%m-%d")
     
-    for attempt in range(5):
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        try:
-            c.execute("BEGIN IMMEDIATE")
-            
-            if rating == 0:
-                if user_id is not None:
-                    c.execute("DELETE FROM ratings WHERE food_id = ? AND user_id = ?", (food_id, user_id))
-                else:
-                    # Fallback: delete most recent if no user provided (legacy behavior)
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    if rating == 0:
+        if user_id is not None:
+            for _ in range(3):
+                try:
+                    c.execute("DELETE FROM ratings WHERE food_id = ? AND user_id = ? AND date = ?", (food_id, user_id, date))
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
+        else:
+            # Fallback: delete most recent if no user provided (legacy behavior)
+            for _ in range(3):
+                try:
                     c.execute(
-                        "DELETE FROM ratings WHERE id = (SELECT id FROM ratings WHERE food_id = ? ORDER BY timestamp DESC LIMIT 1)",
-                        (food_id,),
+                        "DELETE FROM ratings WHERE id = (SELECT id FROM ratings WHERE food_id = ? AND date = ? ORDER BY timestamp DESC LIMIT 1)",
+                        (food_id, date),
                     )
-            else:
-                if user_id is None:
-                    # Legacy insert without user tracking
-                    c.execute("INSERT INTO ratings (food_id, rating) VALUES (?, ?)", (food_id, rating))
-                else:
-                    # Emulate upsert: try update first, then insert if no row updated
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
+    else:
+        if user_id is None:
+            # Legacy insert without user tracking
+            for _ in range(3):
+                try:
+                    c.execute("INSERT INTO ratings (food_id, rating, date) VALUES (?, ?, ?)", (food_id, rating, date))
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
+        else:
+            # Emulate upsert: try update first, then insert if no row updated
+            for _ in range(3):
+                try:
                     c.execute(
-                        "UPDATE ratings SET rating = ?, timestamp = CURRENT_TIMESTAMP WHERE food_id = ? AND user_id = ?",
-                        (rating, food_id, user_id),
+                        "UPDATE ratings SET rating = ?, timestamp = CURRENT_TIMESTAMP WHERE food_id = ? AND user_id = ? AND date = ?",
+                        (rating, food_id, user_id, date),
                     )
-                    if c.rowcount == 0:
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        import time; time.sleep(0.1)
+                        continue
+                    else:
+                        raise
+            if c.rowcount == 0:
+                for _ in range(3):
+                    try:
                         c.execute(
-                            "INSERT OR IGNORE INTO ratings (food_id, user_id, rating) VALUES (?, ?, ?)",
-                            (food_id, user_id, rating),
+                            "INSERT OR IGNORE INTO ratings (food_id, user_id, rating, date) VALUES (?, ?, ?, ?)",
+                            (food_id, user_id, rating, date),
                         )
-            
-            c.execute("COMMIT")
-            conn.close()
-            return
-            
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                c.execute("ROLLBACK")
-                conn.close()
-                # Exponential backoff with jitter
-                wait_time = (0.1 * (2 ** attempt)) + random.uniform(0, 0.1)
-                time.sleep(wait_time)
-                continue
-            else:
-                c.execute("ROLLBACK")
-                conn.close()
-                raise
-        except Exception as e:
-            c.execute("ROLLBACK")
-            conn.close()
-            raise
+                        break
+                    except sqlite3.OperationalError as e:
+                        if "database is locked" in str(e):
+                            import time; time.sleep(0.1)
+                            continue
+                        else:
+                            raise
+    conn.commit()
+    conn.close()
+
+
+def get_ratings(date=None):
+    """Calculates and returns the average ratings for a specific date."""
+    if date is None:
+        from datetime import datetime
+        date = datetime.now().strftime("%Y-%m-%d")
     
-    # If all retries failed
-    raise sqlite3.OperationalError("Database locked after multiple retries")
-
-
-def get_ratings():
-    """Calculates and returns the average ratings."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    # Food ratings
+    # Food ratings - only for foods that have ratings on the given date
     c.execute("""
         SELECT f.name, f.station, f.dining_hall, f.meal, AVG(r.rating), COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.id
-    """)
+    """, (date,))
     food_ratings = {
         f"{row[0]}_{row[1]}_{row[2]}_{row[3]}": {"avg_rating": row[4], "rating_count": row[5]}
         for row in c.fetchall()
@@ -213,8 +218,9 @@ def get_ratings():
         SELECT f.name, f.station, f.dining_hall, f.meal, r.rating, COUNT(*)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.id, r.rating
-    """)
+    """, (date,))
     distributions = {}
     for row in c.fetchall():
         key = f"{row[0]}_{row[1]}_{row[2]}_{row[3]}"
@@ -234,8 +240,9 @@ def get_ratings():
         SELECT f.station, f.dining_hall, AVG(r.rating), COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.station, f.dining_hall
-    """)
+    """, (date,))
     station_ratings = {
         f"{row[0]}_{row[1]}": {"avg_rating": row[2], "rating_count": row[3]}
         for row in c.fetchall()
@@ -246,8 +253,9 @@ def get_ratings():
         SELECT f.dining_hall, AVG(r.rating), COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.dining_hall
-    """)
+    """, (date,))
     dining_hall_ratings = {
         row[0]: {"avg_rating": row[1], "rating_count": row[2]} for row in c.fetchall()
     }
@@ -266,8 +274,9 @@ def get_ratings():
             COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.dining_hall, meal_base
-    """)
+    """, (date,))
     meal_ratings = {
         f"{row[0]}_{row[1]}": {"avg_rating": row[2], "rating_count": row[3]}
         for row in c.fetchall()
@@ -289,7 +298,7 @@ def get_all_ratings():
     c = conn.cursor()
     
     c.execute("""
-        SELECT r.id, r.user_id, r.rating, r.timestamp,
+        SELECT r.id, r.user_id, r.rating, r.date, r.timestamp,
                f.name, f.station, f.dining_hall, f.meal,
                u.nickname, u.is_banned
         FROM ratings r
@@ -304,13 +313,14 @@ def get_all_ratings():
             "id": row[0],
             "user_id": row[1],
             "rating": row[2],
-            "timestamp": row[3],
-            "food_name": row[4],
-            "station": row[5],
-            "dining_hall": row[6],
-            "meal": row[7],
-            "nickname": row[8],
-            "is_banned": bool(row[9]) if row[9] is not None else False
+            "date": row[3],
+            "timestamp": row[4],
+            "food_name": row[5],
+            "station": row[6],
+            "dining_hall": row[7],
+            "meal": row[8],
+            "nickname": row[9],
+            "is_banned": bool(row[10]) if row[10] is not None else False
         })
     
     conn.close()
@@ -418,6 +428,27 @@ def delete_rating_by_id(rating_id):
     conn.commit()
     conn.close()
     return c.rowcount > 0
+
+
+def delete_all_ratings():
+    """Deletes all ratings from the database."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    for _ in range(3):
+        try:
+            c.execute("DELETE FROM ratings")
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                import time; time.sleep(0.1)
+                continue
+            else:
+                raise
+    
+    conn.commit()
+    conn.close()
+    return c.rowcount
 
 
 if __name__ == '__main__':
