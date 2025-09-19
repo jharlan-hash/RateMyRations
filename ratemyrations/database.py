@@ -40,6 +40,16 @@ def create_tables():
         c.execute("SELECT user_id FROM ratings LIMIT 1")
     except sqlite3.OperationalError:
         c.execute("ALTER TABLE ratings ADD COLUMN user_id TEXT")
+    
+    # Ensure date column exists for older DBs
+    try:
+        c.execute("SELECT date FROM ratings LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE ratings ADD COLUMN date TEXT")
+        # Set default date for existing ratings (today)
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        c.execute("UPDATE ratings SET date = ? WHERE date IS NULL", (today,))
 
     # Unique per-user per-food ratings (ignore rows where user_id is NULL)
     c.execute("""
@@ -100,15 +110,19 @@ def add_food(name, station, dining_hall, meal):
     return food_id
 
 
-def add_rating(food_id, user_id, rating):
+def add_rating(food_id, user_id, rating, date=None):
     """Upserts a per-user rating. If rating == 0, delete the user's rating."""
+    if date is None:
+        from datetime import datetime
+        date = datetime.now().strftime("%Y-%m-%d")
+    
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     if rating == 0:
         if user_id is not None:
             for _ in range(3):
                 try:
-                    c.execute("DELETE FROM ratings WHERE food_id = ? AND user_id = ?", (food_id, user_id))
+                    c.execute("DELETE FROM ratings WHERE food_id = ? AND user_id = ? AND date = ?", (food_id, user_id, date))
                     break
                 except sqlite3.OperationalError as e:
                     if "database is locked" in str(e):
@@ -121,8 +135,8 @@ def add_rating(food_id, user_id, rating):
             for _ in range(3):
                 try:
                     c.execute(
-                        "DELETE FROM ratings WHERE id = (SELECT id FROM ratings WHERE food_id = ? ORDER BY timestamp DESC LIMIT 1)",
-                        (food_id,),
+                        "DELETE FROM ratings WHERE id = (SELECT id FROM ratings WHERE food_id = ? AND date = ? ORDER BY timestamp DESC LIMIT 1)",
+                        (food_id, date),
                     )
                     break
                 except sqlite3.OperationalError as e:
@@ -136,7 +150,7 @@ def add_rating(food_id, user_id, rating):
             # Legacy insert without user tracking
             for _ in range(3):
                 try:
-                    c.execute("INSERT INTO ratings (food_id, rating) VALUES (?, ?)", (food_id, rating))
+                    c.execute("INSERT INTO ratings (food_id, rating, date) VALUES (?, ?, ?)", (food_id, rating, date))
                     break
                 except sqlite3.OperationalError as e:
                     if "database is locked" in str(e):
@@ -149,8 +163,8 @@ def add_rating(food_id, user_id, rating):
             for _ in range(3):
                 try:
                     c.execute(
-                        "UPDATE ratings SET rating = ?, timestamp = CURRENT_TIMESTAMP WHERE food_id = ? AND user_id = ?",
-                        (rating, food_id, user_id),
+                        "UPDATE ratings SET rating = ?, timestamp = CURRENT_TIMESTAMP WHERE food_id = ? AND user_id = ? AND date = ?",
+                        (rating, food_id, user_id, date),
                     )
                     break
                 except sqlite3.OperationalError as e:
@@ -163,8 +177,8 @@ def add_rating(food_id, user_id, rating):
                 for _ in range(3):
                     try:
                         c.execute(
-                            "INSERT OR IGNORE INTO ratings (food_id, user_id, rating) VALUES (?, ?, ?)",
-                            (food_id, user_id, rating),
+                            "INSERT OR IGNORE INTO ratings (food_id, user_id, rating, date) VALUES (?, ?, ?, ?)",
+                            (food_id, user_id, rating, date),
                         )
                         break
                     except sqlite3.OperationalError as e:
@@ -177,18 +191,23 @@ def add_rating(food_id, user_id, rating):
     conn.close()
 
 
-def get_ratings():
-    """Calculates and returns the average ratings."""
+def get_ratings(date=None):
+    """Calculates and returns the average ratings for a specific date."""
+    if date is None:
+        from datetime import datetime
+        date = datetime.now().strftime("%Y-%m-%d")
+    
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    # Food ratings
+    # Food ratings - only for foods that have ratings on the given date
     c.execute("""
         SELECT f.name, f.station, f.dining_hall, f.meal, AVG(r.rating), COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.id
-    """)
+    """, (date,))
     food_ratings = {
         f"{row[0]}_{row[1]}_{row[2]}_{row[3]}": {"avg_rating": row[4], "rating_count": row[5]}
         for row in c.fetchall()
@@ -199,8 +218,9 @@ def get_ratings():
         SELECT f.name, f.station, f.dining_hall, f.meal, r.rating, COUNT(*)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.id, r.rating
-    """)
+    """, (date,))
     distributions = {}
     for row in c.fetchall():
         key = f"{row[0]}_{row[1]}_{row[2]}_{row[3]}"
@@ -220,8 +240,9 @@ def get_ratings():
         SELECT f.station, f.dining_hall, AVG(r.rating), COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.station, f.dining_hall
-    """)
+    """, (date,))
     station_ratings = {
         f"{row[0]}_{row[1]}": {"avg_rating": row[2], "rating_count": row[3]}
         for row in c.fetchall()
@@ -232,8 +253,9 @@ def get_ratings():
         SELECT f.dining_hall, AVG(r.rating), COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.dining_hall
-    """)
+    """, (date,))
     dining_hall_ratings = {
         row[0]: {"avg_rating": row[1], "rating_count": row[2]} for row in c.fetchall()
     }
@@ -252,8 +274,9 @@ def get_ratings():
             COUNT(r.rating)
         FROM foods f
         JOIN ratings r ON f.id = r.food_id
+        WHERE r.date = ?
         GROUP BY f.dining_hall, meal_base
-    """)
+    """, (date,))
     meal_ratings = {
         f"{row[0]}_{row[1]}": {"avg_rating": row[2], "rating_count": row[3]}
         for row in c.fetchall()

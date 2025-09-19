@@ -248,7 +248,8 @@ def get_menus_route():
 
 @app.route("/api/ratings")
 def get_ratings_route():
-    ratings = database.get_ratings()
+    date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
+    ratings = database.get_ratings(date_str)
     return jsonify(ratings)
 
 
@@ -265,12 +266,13 @@ def internal_error_handler(e):
 def rate_route():
     data = request.get_json()
     user_id = data.get("user_id")
+    date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
     
     # Check if user is banned
     if user_id and database.is_user_banned(user_id):
         return jsonify({"error": "User is banned"}), 403
     
-    database.add_rating(data["food_id"], user_id, data["rating"])
+    database.add_rating(data["food_id"], user_id, data["rating"], date_str)
     return jsonify({"status": "success"})
 
 @app.route("/api/delete-ratings", methods=["POST"])

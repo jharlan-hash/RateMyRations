@@ -7,6 +7,8 @@ set -e
 
 echo "Starting RateMyRations..."
 
+python3 ratemyrations/database.py # create the database tables
+
 # Start Gunicorn in background
 echo "Starting Gunicorn with 4 workers..."
 export RATE_LIMIT_STORAGE_URI=redis://127.0.0.1:6379/0

@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function fetchRatings() {
-        return fetch("/api/ratings")
+        return fetch(`/api/ratings?date=${dateInput.value}`)
             .then(response => response.json())
             .then(data => {
                 ratings = data;
@@ -87,7 +87,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     fetch("/api/rate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ food_id: foodId, rating: newRating, user_id: browserId })
+                        body: JSON.stringify({ food_id: foodId, rating: newRating, user_id: browserId, date: dateInput.value })
                     }).then(() => {
                         if (newRating === 0) {
                             delete userRatings[foodId];
@@ -128,6 +128,114 @@ document.addEventListener("DOMContentLoaded", function() {
         return starRatingContainer;
     }
 
+    function filterRatingsByMenu(ratings, menuData) {
+        // Create a set of food keys that are in today's menu
+        const menuFoodKeys = new Set();
+        for (const diningHall in menuData) {
+            for (const meal in menuData[diningHall]) {
+                for (const station in menuData[diningHall][meal]) {
+                    const items = menuData[diningHall][meal][station];
+                    if (items && items.length > 0) {
+                        for (const item of items) {
+                            // Use the original meal slug from the menu data, not normalized display name
+                            const foodKey = `${item.name}_${station}_${diningHall}_${meal}`;
+                            menuFoodKeys.add(foodKey);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Filter ratings to only include foods that are in the menu
+        const filteredRatings = {
+            foods: {},
+            stations: {},
+            dining_halls: {},
+            meals: {}
+        };
+        
+        // Filter food ratings
+        for (const [foodKey, rating] of Object.entries(ratings.foods)) {
+            if (menuFoodKeys.has(foodKey)) {
+                filteredRatings.foods[foodKey] = rating;
+            }
+        }
+        
+        // Recalculate station ratings based on filtered foods
+        const stationRatings = {};
+        for (const [foodKey, rating] of Object.entries(filteredRatings.foods)) {
+            const parts = foodKey.split('_');
+            const foodName = parts[0];
+            const station = parts[1];
+            const diningHall = parts[2];
+            const meal = parts[3];
+            const stationKey = `${station}_${diningHall}`;
+            
+            if (!stationRatings[stationKey]) {
+                stationRatings[stationKey] = { total: 0, count: 0 };
+            }
+            stationRatings[stationKey].total += rating.avg_rating * rating.rating_count;
+            stationRatings[stationKey].count += rating.rating_count;
+        }
+        
+        for (const [stationKey, data] of Object.entries(stationRatings)) {
+            if (data.count > 0) {
+                filteredRatings.stations[stationKey] = {
+                    avg_rating: data.total / data.count,
+                    rating_count: data.count
+                };
+            }
+        }
+        
+        // Recalculate dining hall ratings based on filtered foods
+        const diningHallRatings = {};
+        for (const [foodKey, rating] of Object.entries(filteredRatings.foods)) {
+            const parts = foodKey.split('_');
+            const diningHall = parts[2];
+            
+            if (!diningHallRatings[diningHall]) {
+                diningHallRatings[diningHall] = { total: 0, count: 0 };
+            }
+            diningHallRatings[diningHall].total += rating.avg_rating * rating.rating_count;
+            diningHallRatings[diningHall].count += rating.rating_count;
+        }
+        
+        for (const [diningHall, data] of Object.entries(diningHallRatings)) {
+            if (data.count > 0) {
+                filteredRatings.dining_halls[diningHall] = {
+                    avg_rating: data.total / data.count,
+                    rating_count: data.count
+                };
+            }
+        }
+        
+        // Recalculate meal ratings based on filtered foods
+        const mealRatings = {};
+        for (const [foodKey, rating] of Object.entries(filteredRatings.foods)) {
+            const parts = foodKey.split('_');
+            const diningHall = parts[2];
+            const meal = parts[3];
+            const mealKey = `${diningHall}_${meal}`;
+            
+            if (!mealRatings[mealKey]) {
+                mealRatings[mealKey] = { total: 0, count: 0 };
+            }
+            mealRatings[mealKey].total += rating.avg_rating * rating.rating_count;
+            mealRatings[mealKey].count += rating.rating_count;
+        }
+        
+        for (const [mealKey, data] of Object.entries(mealRatings)) {
+            if (data.count > 0) {
+                filteredRatings.meals[mealKey] = {
+                    avg_rating: data.total / data.count,
+                    rating_count: data.count
+                };
+            }
+        }
+        
+        return filteredRatings;
+    }
+
     function fetchMenus(date, openTabs = new Set()) {
 
         fetch(`/api/menus?date=${date}`)
@@ -138,6 +246,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 return response.json();
             })
             .then(data => {
+                // Filter ratings to only include foods in today's menu
+                ratings = filterRatingsByMenu(ratings, data);
+                
                 const menusContainer = document.getElementById("menus-container");
                 menusContainer.innerHTML = ""; // Clear previous menus
                 for (const diningHall in data) {
@@ -147,10 +258,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     const diningHallTitle = document.createElement("h2");
                     diningHallTitle.textContent = diningHall;
-                    if (ratings.dining_halls[diningHall]) {
-                        const avgRating = ratings.dining_halls[diningHall].avg_rating;
-                        diningHallTitle.appendChild(renderStars(avgRating, null, false));
-                    }
                     diningHallDiv.appendChild(diningHallTitle);
 
                     const diningHallContent = document.createElement("div");
@@ -177,12 +284,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
                         const mealTitle = document.createElement("h3");
                         mealTitle.textContent = meal.charAt(0).toUpperCase() + meal.slice(1);
-                        if (ratings.meals[`${diningHall}_${meal}`]) {
-                            const avgRating = ratings.meals[`${diningHall}_${meal}`].avg_rating;
-                            const starRating = renderStars(avgRating, null, false);
-                            starRating.classList.add('meal-star-rating');
-                            mealTitle.appendChild(starRating);
-                        }
                         mealDiv.appendChild(mealTitle);
 
                         const mealContent = document.createElement("div");
@@ -201,10 +302,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
                                 const stationTitle = document.createElement("h4");
                                 stationTitle.textContent = station;
-                                if (ratings.stations[`${station}_${diningHall}`]) {
-                                    const avgRating = ratings.stations[`${station}_${diningHall}`].avg_rating;
-                                    stationTitle.appendChild(renderStars(avgRating, null, false));
-                                }
                                 stationDiv.appendChild(stationTitle);
 
                                 const menuList = document.createElement("ul");
@@ -213,6 +310,12 @@ document.addEventListener("DOMContentLoaded", function() {
                                     menuList.classList.add("active");
                                 }
                                 const items = data[diningHall][meal][station];
+                                
+                                // Show station rating if available (already filtered by menu)
+                                if (ratings.stations[`${station}_${diningHall}`]) {
+                                    const avgRating = ratings.stations[`${station}_${diningHall}`].avg_rating;
+                                    stationTitle.appendChild(renderStars(avgRating, null, false));
+                                }
                                 if (!items || items.length === 0) {
                                     const emptyHint = document.createElement('p');
                                     emptyHint.classList.add('empty-hint');
@@ -315,6 +418,15 @@ document.addEventListener("DOMContentLoaded", function() {
                             noMenu.textContent = "Menu not available";
                             mealContent.appendChild(noMenu);
                         }
+                        
+                        // Add meal rating if available (already filtered by menu)
+                        if (ratings.meals[`${diningHall}_${meal}`]) {
+                            const avgRating = ratings.meals[`${diningHall}_${meal}`].avg_rating;
+                            const starRating = renderStars(avgRating, null, false);
+                            starRating.classList.add('meal-star-rating');
+                            mealTitle.appendChild(starRating);
+                        }
+                        
                         diningHallContent.appendChild(mealDiv)
 
                         mealTitle.addEventListener("click", function() {
@@ -332,6 +444,13 @@ document.addEventListener("DOMContentLoaded", function() {
                             }
                         });
                     }
+                    
+                    // Add dining hall rating if available (already filtered by menu)
+                    if (ratings.dining_halls[diningHall]) {
+                        const avgRating = ratings.dining_halls[diningHall].avg_rating;
+                        diningHallTitle.appendChild(renderStars(avgRating, null, false));
+                    }
+                    
                     menusContainer.appendChild(diningHallDiv);
 
                     diningHallTitle.addEventListener("click", function() {
