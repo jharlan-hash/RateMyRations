@@ -70,111 +70,125 @@ def create_tables():
 
 def add_food(name, station, dining_hall, meal):
     """Adds a food item to the database and returns its ID."""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    # Retry on database is locked
-    for _ in range(3):
+    import time
+    import random
+    
+    for attempt in range(5):  # Increased retry attempts
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
         try:
+            # Use a transaction to ensure atomicity
+            c.execute("BEGIN IMMEDIATE")
+            
+            # Try to insert first
             c.execute(
                 "INSERT OR IGNORE INTO foods (name, station, dining_hall, meal) VALUES (?, ?, ?, ?)",
                 (name, station, dining_hall, meal),
             )
-            break
+            
+            if c.rowcount > 0:
+                food_id = c.lastrowid
+                c.execute("COMMIT")
+                conn.close()
+                return food_id
+            else:
+                # If no row was inserted, try to get existing ID
+                c.execute(
+                    "SELECT id FROM foods WHERE name = ? AND station = ? AND dining_hall = ? AND meal = ?",
+                    (name, station, dining_hall, meal),
+                )
+                row = c.fetchone()
+                if row:
+                    food_id = row[0]
+                    c.execute("COMMIT")
+                    conn.close()
+                    return food_id
+                else:
+                    # This shouldn't happen, but handle it gracefully
+                    c.execute("COMMIT")
+                    conn.close()
+                    return None
+                    
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
-                import time; time.sleep(0.1)
+                c.execute("ROLLBACK")
+                conn.close()
+                # Exponential backoff with jitter
+                wait_time = (0.1 * (2 ** attempt)) + random.uniform(0, 0.1)
+                time.sleep(wait_time)
                 continue
             else:
+                c.execute("ROLLBACK")
+                conn.close()
                 raise
-    if c.rowcount:
-        food_id = c.lastrowid
-    else:
-        c.execute(
-            "SELECT id FROM foods WHERE name = ? AND station = ? AND dining_hall = ? AND meal = ?",
-            (name, station, dining_hall, meal),
-        )
-        row = c.fetchone()
-        food_id = row[0] if row else None
-    conn.commit()
-    conn.close()
-    return food_id
+        except Exception as e:
+            c.execute("ROLLBACK")
+            conn.close()
+            raise
+    
+    # If all retries failed
+    raise sqlite3.OperationalError("Database locked after multiple retries")
 
 
 def add_rating(food_id, user_id, rating):
     """Upserts a per-user rating. If rating == 0, delete the user's rating."""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    if rating == 0:
-        if user_id is not None:
-            for _ in range(3):
-                try:
+    import time
+    import random
+    
+    for attempt in range(5):
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        try:
+            c.execute("BEGIN IMMEDIATE")
+            
+            if rating == 0:
+                if user_id is not None:
                     c.execute("DELETE FROM ratings WHERE food_id = ? AND user_id = ?", (food_id, user_id))
-                    break
-                except sqlite3.OperationalError as e:
-                    if "database is locked" in str(e):
-                        import time; time.sleep(0.1)
-                        continue
-                    else:
-                        raise
-        else:
-            # Fallback: delete most recent if no user provided (legacy behavior)
-            for _ in range(3):
-                try:
+                else:
+                    # Fallback: delete most recent if no user provided (legacy behavior)
                     c.execute(
                         "DELETE FROM ratings WHERE id = (SELECT id FROM ratings WHERE food_id = ? ORDER BY timestamp DESC LIMIT 1)",
                         (food_id,),
                     )
-                    break
-                except sqlite3.OperationalError as e:
-                    if "database is locked" in str(e):
-                        import time; time.sleep(0.1)
-                        continue
-                    else:
-                        raise
-    else:
-        if user_id is None:
-            # Legacy insert without user tracking
-            for _ in range(3):
-                try:
+            else:
+                if user_id is None:
+                    # Legacy insert without user tracking
                     c.execute("INSERT INTO ratings (food_id, rating) VALUES (?, ?)", (food_id, rating))
-                    break
-                except sqlite3.OperationalError as e:
-                    if "database is locked" in str(e):
-                        import time; time.sleep(0.1)
-                        continue
-                    else:
-                        raise
-        else:
-            # Emulate upsert: try update first, then insert if no row updated
-            for _ in range(3):
-                try:
+                else:
+                    # Emulate upsert: try update first, then insert if no row updated
                     c.execute(
                         "UPDATE ratings SET rating = ?, timestamp = CURRENT_TIMESTAMP WHERE food_id = ? AND user_id = ?",
                         (rating, food_id, user_id),
                     )
-                    break
-                except sqlite3.OperationalError as e:
-                    if "database is locked" in str(e):
-                        import time; time.sleep(0.1)
-                        continue
-                    else:
-                        raise
-            if c.rowcount == 0:
-                for _ in range(3):
-                    try:
+                    if c.rowcount == 0:
                         c.execute(
                             "INSERT OR IGNORE INTO ratings (food_id, user_id, rating) VALUES (?, ?, ?)",
                             (food_id, user_id, rating),
                         )
-                        break
-                    except sqlite3.OperationalError as e:
-                        if "database is locked" in str(e):
-                            import time; time.sleep(0.1)
-                            continue
-                        else:
-                            raise
-    conn.commit()
-    conn.close()
+            
+            c.execute("COMMIT")
+            conn.close()
+            return
+            
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                c.execute("ROLLBACK")
+                conn.close()
+                # Exponential backoff with jitter
+                wait_time = (0.1 * (2 ** attempt)) + random.uniform(0, 0.1)
+                time.sleep(wait_time)
+                continue
+            else:
+                c.execute("ROLLBACK")
+                conn.close()
+                raise
+        except Exception as e:
+            c.execute("ROLLBACK")
+            conn.close()
+            raise
+    
+    # If all retries failed
+    raise sqlite3.OperationalError("Database locked after multiple retries")
 
 
 def get_ratings():
