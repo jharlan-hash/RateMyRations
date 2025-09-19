@@ -1,7 +1,7 @@
 import os
 
-# Rate limiting
-RATE_LIMIT_DEFAULT = os.environ.get("RATE_LIMIT_DEFAULT", "10 per minute")
+# Rate limiting - More generous limits for normal user interaction
+RATE_LIMIT_DEFAULT = os.environ.get("RATE_LIMIT_DEFAULT", "60 per minute")
 RATE_LIMIT_STORAGE_URI = os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://")
 
 # Admin token for destructive endpoints

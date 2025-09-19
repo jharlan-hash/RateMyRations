@@ -60,6 +60,14 @@ document.addEventListener("DOMContentLoaded", function() {
             })
             .catch(error => {
                 console.error('Error fetching ratings:', error);
+                
+                // Handle rate limiting specifically
+                if (error.message.includes('HTTP 429')) {
+                    console.warn('Rate limited while fetching ratings, keeping existing data');
+                    // Don't throw error for rate limiting - keep existing ratings
+                    return ratings;
+                }
+                
                 // Don't update ratings if fetch fails - keep existing data
                 throw error;
             });
@@ -95,6 +103,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     if (star.dataset._debouncing) return;
                     star.dataset._debouncing = "1";
+                    
+                    // Add a small delay to prevent rapid-fire requests
+                    setTimeout(() => {
+                        if (!star.dataset._debouncing) return; // Check if still debouncing
                     fetch("/api/rate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -121,8 +133,14 @@ document.addEventListener("DOMContentLoaded", function() {
                         fetchMenus(dateInput.value, openTabs);
                     }).catch(error => {
                         console.error('Error updating rating:', error);
-                        // Show user-friendly error message
-                        alert('Failed to update rating. Please try again.');
+                        
+                        // Handle rate limiting specifically
+                        if (error.message.includes('HTTP 429')) {
+                            alert('Rate limit exceeded. Please wait a moment before rating more items.');
+                        } else {
+                            alert('Failed to update rating. Please try again.');
+                        }
+                        
                         // Revert the star selection
                         star.classList.remove('active');
                         if (newRating > 1) {
@@ -133,6 +151,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     }).finally(() => {
                         delete star.dataset._debouncing;
                     });
+                    }, 100); // 100ms delay to prevent rapid-fire requests
                 });
             });
 
