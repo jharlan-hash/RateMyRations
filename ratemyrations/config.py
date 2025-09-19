@@ -32,6 +32,7 @@ IGNORE_CATEGORIES = [
     "Frozen Yogurt Bar",
     "Breads & Spreads",
     "Cereal",
+    "Field of Greens",
 ]
 
 
