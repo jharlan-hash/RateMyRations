@@ -256,11 +256,29 @@ class RateMyRationsApp {
 
 // Initialize application when DOM is ready
 document.addEventListener('DOMContentLoaded', async () => {
-  const app = new RateMyRationsApp();
-  await app.init();
-  
-  // Make app globally available for debugging
-  window.rateMyRationsApp = app;
+  try {
+    const app = new RateMyRationsApp();
+    await app.init();
+    
+    // Make app globally available for debugging
+    window.rateMyRationsApp = app;
+    
+    console.log('✅ RateMyRations application initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize RateMyRations:', error);
+    
+    // Show error in UI
+    const errorEl = document.createElement('div');
+    errorEl.className = 'global-error';
+    errorEl.innerHTML = `
+      <div class="global-error-content">
+        <h3>Application Error</h3>
+        <p>Failed to initialize the application. Please refresh the page.</p>
+        <button onclick="window.location.reload()">Reload Page</button>
+      </div>
+    `;
+    document.body.appendChild(errorEl);
+  }
 });
 
 export default RateMyRationsApp;

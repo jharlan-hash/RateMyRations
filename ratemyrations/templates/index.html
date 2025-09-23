@@ -3,33 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UIowa RateMyRations</title>
-    <link rel="stylesheet" href="/static/styles.css?v=5">
+    <title>RateMyRations - University of Iowa Dining</title>
+    <link rel="stylesheet" href="/static/styles.css?v=6">
+    <link rel="icon" href="/static/favicon.ico">
 </head>
 <body>
-    <div class="container">
-        <h1>RateMyRations - UIowa</h1>
-        <h2>Rate your dining hall meals!</h2>
-        <h5>Version 1.0.10</h5>
-        <p><a href="/about">About</a></p>
-        <div class="date-picker">
-            <label for="menu-date">Select a date:</label>
-            <input type="date" id="menu-date">
-        </div>
-        <div id="menus-container"></div>
-        
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">RateMyRations</h1>
+                <p class="app-subtitle">University of Iowa Dining Hall Ratings</p>
+                <div class="header-actions">
+                    <date-picker></date-picker>
+                    <div class="version-info">
+                        <h5>Version 1.1.0</h5>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <error-boundary>
+                <loading-spinner message="Loading menus..." overlay="true"></loading-spinner>
+                <menu-container></menu-container>
+            </error-boundary>
+        </main>
+
+        <footer class="app-footer">
+            <div class="footer-content">
+                <p>&copy; 2025 RateMyRations. Built for University of Iowa students.</p>
+                <nav class="footer-nav">
+                    <a href="/about" class="footer-link">About</a>
+                    <button class="footer-link admin-toggle" type="button">Admin</button>
+                </nav>
+            </div>
+        </footer>
+
+        <!-- Admin Console -->
+        <admin-console></admin-console>
     </div>
 
-    <template id="star-rating-template">
-        <div class="star-rating">
-            <span class="star" data-value="1">&#9733;</span>
-            <span class="star" data-value="2">&#9733;</span>
-            <span class="star" data-value="3">&#9733;</span>
-            <span class="star" data-value="4">&#9733;</span>
-            <span class="star" data-value="5">&#9733;</span>
-        </div>
-    </template>
-
-    <script src="/static/script.js?v=10"></script>
+    <!-- Load the new modular frontend -->
+    <script type="module" src="/static/dist/app.js?v=11"></script>
+    
+    <!-- Fallback for browsers that don't support modules -->
+    <script nomodule>
+        document.getElementById('error-container').style.display = 'block';
+        document.getElementById('error-text').textContent = 'Your browser does not support ES6 modules. Please use a modern browser.';
+    </script>
 </body>
 </html>

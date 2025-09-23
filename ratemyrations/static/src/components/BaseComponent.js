@@ -14,6 +14,7 @@ class BaseComponent extends HTMLElement {
    * Called when component is added to DOM
    */
   connectedCallback() {
+    this.updateFromAttributes();
     this.render();
     this.attachEventListeners();
     this.subscribeToState();
@@ -48,6 +49,13 @@ class BaseComponent extends HTMLElement {
    * Called after render - override in subclasses
    */
   afterRender() {
+    // Override in subclasses
+  }
+  
+  /**
+   * Update component from attributes - override in subclasses
+   */
+  updateFromAttributes() {
     // Override in subclasses
   }
   
