@@ -105,6 +105,24 @@ class RateMyRationsApp {
   initializeComponentInstances() {
     console.log('🔧 Initializing component instances...');
     
+    // Initialize all components
+    const components = [
+      'menu-container',
+      'date-picker', 
+      'loading-spinner',
+      'error-boundary',
+      'admin-console'
+    ];
+    
+    components.forEach(componentName => {
+      const element = document.querySelector(componentName);
+      if (element) {
+        console.log(`✅ Initialized ${componentName}`);
+      } else {
+        console.warn(`⚠️ Component ${componentName} not found in DOM`);
+      }
+    });
+    
     // Set up admin toggle
     this.setupAdminToggle();
   }

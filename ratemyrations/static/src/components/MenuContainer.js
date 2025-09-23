@@ -378,6 +378,12 @@ class MenuContainer extends BaseComponent {
     this.updateFromAttributes();
     this.attachEventListeners();
     
+    // Get initial data from state
+    this.menus = this.state.getState('menus') || {};
+    this.ratings = this.state.getState('ratings') || {};
+    this.userRatings = this.state.getState('userRatings') || {};
+    this.expandedSections = this.state.getState('expandedSections') || new Set();
+    
     // Restore expanded state
     this.expandedSections.forEach(sectionId => {
       this.updateExpandedState(sectionId, true);

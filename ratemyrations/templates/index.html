@@ -16,7 +16,7 @@
                 <div class="header-actions">
                     <date-picker></date-picker>
                     <div class="version-info">
-                        <h5>Version 1.1.0</h5>
+                        <h5>Version 1.1.2</h5>
                     </div>
                 </div>
             </div>
@@ -48,8 +48,7 @@
     
     <!-- Fallback for browsers that don't support modules -->
     <script nomodule>
-        document.getElementById('error-container').style.display = 'block';
-        document.getElementById('error-text').textContent = 'Your browser does not support ES6 modules. Please use a modern browser.';
+        document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;"><h2>Browser Not Supported</h2><p>Your browser does not support ES6 modules. Please use a modern browser like Chrome, Firefox, Safari, or Edge.</p><p>Current browser: ' + navigator.userAgent + '</p></div>';
     </script>
 </body>
 </html>

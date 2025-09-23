@@ -36,50 +36,7 @@ CACHE = OrderedDict()
 CACHE_DURATION = timedelta(minutes=config.CACHE_MINUTES)
 CACHE_MAX_SIZE = config.CACHE_MAX_SIZE
 
-# Pre-warm cache for common dates
-def warm_cache_for_date(date_str):
-    """Pre-warm cache for a specific date."""
-    try:
-        with CACHE_LOCK:
-            if date_str in CACHE:
-                return  # Already cached
-        
-        menus = fetch_all_menus(date_str)
-        
-        with CACHE_LOCK:
-            CACHE[date_str] = {
-                "data": menus,
-                "timestamp": datetime.now()
-            }
-            CACHE.move_to_end(date_str)
-            
-            # Enforce cache size limit
-            while len(CACHE) > CACHE_MAX_SIZE:
-                CACHE.popitem(last=False)
-                
-    except Exception as e:
-        print(f"Error warming cache for {date_str}: {e}")
-
-# Background cache warming
-import atexit
-from threading import Thread
-
-def background_cache_warming():
-    """Warm cache for today and tomorrow in background."""
-    try:
-        today = datetime.now().strftime("%Y-%m-%d")
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-        
-        warm_cache_for_date(today)
-        warm_cache_for_date(tomorrow)
-        
-        print(f"Cache warmed for {today} and {tomorrow}")
-    except Exception as e:
-        print(f"Background cache warming failed: {e}")
-
-# Start background cache warming
-cache_thread = Thread(target=background_cache_warming, daemon=True)
-cache_thread.start()
+# Background cache warming will be started after fetch_all_menus is defined
 
 
 def _requests_session():
@@ -197,6 +154,51 @@ def fetch_all_menus(date_str):
                 continue
 
     return menus
+
+# Pre-warm cache for common dates
+def warm_cache_for_date(date_str):
+    """Pre-warm cache for a specific date."""
+    try:
+        with CACHE_LOCK:
+            if date_str in CACHE:
+                return  # Already cached
+        
+        menus = fetch_all_menus(date_str)
+        
+        with CACHE_LOCK:
+            CACHE[date_str] = {
+                "data": menus,
+                "timestamp": datetime.now()
+            }
+            CACHE.move_to_end(date_str)
+            
+            # Enforce cache size limit
+            while len(CACHE) > CACHE_MAX_SIZE:
+                CACHE.popitem(last=False)
+                
+    except Exception as e:
+        print(f"Error warming cache for {date_str}: {e}")
+
+# Background cache warming
+import atexit
+from threading import Thread
+
+def background_cache_warming():
+    """Warm cache for today and tomorrow in background."""
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        warm_cache_for_date(today)
+        warm_cache_for_date(tomorrow)
+        
+        print(f"Cache warmed for {today} and {tomorrow}")
+    except Exception as e:
+        print(f"Background cache warming failed: {e}")
+
+# Start background cache warming
+cache_thread = Thread(target=background_cache_warming, daemon=True)
+cache_thread.start()
 
 @app.route("/")
 def index():

@@ -72,6 +72,20 @@ class LoadingSpinner extends BaseComponent {
   
   afterRender() {
     this.updateFromAttributes();
+    this.subscribeToState();
+  }
+  
+  subscribeToState() {
+    // Subscribe to loading state changes
+    this.subscriptions.push(
+      this.state.subscribe('loading', (loading) => {
+        if (loading) {
+          this.show();
+        } else {
+          this.hide();
+        }
+      })
+    );
   }
 }
 
