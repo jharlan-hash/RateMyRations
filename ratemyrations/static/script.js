@@ -91,10 +91,19 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 star.addEventListener("click", (event) => {
                     event.stopPropagation();
-                    let newRating = star.dataset.value;
+                    let newRating = parseInt(star.dataset.value);
                     if (star.classList.contains("user-rated") && newRating == userRatings[foodId]) {
                         newRating = 0;
                     }
+
+                    // Update visual state immediately
+                    stars.forEach((s, index) => {
+                        if (index < newRating) {
+                            s.classList.add("active");
+                        } else {
+                            s.classList.remove("active");
+                        }
+                    });
 
                     const openTabs = new Set();
                     document.querySelectorAll(".active").forEach(tab => {
@@ -124,12 +133,8 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
                         
-        console.log('Rating updated successfully, fetching fresh ratings...');
-                        // Update ratings first, then re-render menus
-                        return fetchRatings();
-                    }).then(() => {
-                        // Only re-render menus if ratings fetch succeeded
-                        fetchMenus(dateInput.value, openTabs);
+                        console.log('Rating updated successfully');
+                        // No need to call updateRatingInUI - the visual state is already set by the click handler
                     }).catch(error => {
                         console.error('Error updating rating:', error);
                         
@@ -140,13 +145,15 @@ document.addEventListener("DOMContentLoaded", function() {
                             alert('Failed to update rating. Please try again.');
                         }
                         
-                        // Revert the star selection
-                        star.classList.remove('active');
-                        if (newRating > 1) {
-                            for (let i = 1; i < newRating; i++) {
-                                stars[i - 1].classList.remove('active');
+                        // Revert the star selection to previous state
+                        const previousRating = userRatings[foodId] || 0;
+                        stars.forEach((s, index) => {
+                            if (index < previousRating) {
+                                s.classList.add("active");
+                            } else {
+                                s.classList.remove("active");
                             }
-                        }
+                        });
                     }).finally(() => {
                         delete star.dataset._debouncing;
                     });
@@ -177,6 +184,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         return starRatingContainer;
     }
+
 
     function filterRatingsByMenu(ratings, menuData) {
         // Handle malformed ratings data
@@ -406,6 +414,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                 }
                                 items.forEach(item => {
                                     const listItem = document.createElement("li");
+                                    listItem.setAttribute('data-food-id', item.id);
 
                                     const foodItemContainer = document.createElement('div');
                                     foodItemContainer.classList.add('food-item-container');
@@ -589,12 +598,20 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
+    // Load ratings first, then menus to ensure ratings are available
     fetchRatings().then(() => {
         fetchMenus(dateInput.value);
+    }).catch(error => {
+        console.error('Error loading initial data:', error);
     });
 
     dateInput.addEventListener("change", function() {
-        fetchMenus(this.value);
+        // Load ratings first, then menus
+        fetchRatings().then(() => {
+            fetchMenus(this.value);
+        }).catch(error => {
+            console.error('Error loading data for date change:', error);
+        });
     });
 
     // Event delegation to handle all clicks without memory leaks

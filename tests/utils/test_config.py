@@ -49,65 +49,63 @@ SAMPLE_MENU_DATA = {
     }
 }
 
-class TestDatabase:
+class TestDatabaseHelper:
     """Test database utility class."""
     
-    def __init__(self, db_path=":memory:"):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        if db_path is None:
+            # Create a temporary file for the test database
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+            temp_file.close()
+            self.db_path = temp_file.name
+        else:
+            self.db_path = db_path
         self.conn = None
+        self.original_db_file = None
+        
+        # Safety check: ensure we're not using the main database
+        main_db_path = os.path.join(os.path.dirname(__file__), "..", "..", "ratemyrations", "ratings.db")
+        if os.path.abspath(self.db_path) == os.path.abspath(main_db_path):
+            raise ValueError("ERROR: Attempted to use main database in tests! This is dangerous.")
     
     def setup(self):
         """Set up test database with tables."""
+        # Store original DB_FILE and replace with test database
+        import ratemyrations.database
+        self.original_db_file = ratemyrations.database.DB_FILE
+        
+        # Safety check: ensure we're not accidentally using the main database
+        # (Skip this check if we're running isolation tests)
+        if not os.environ.get("SKIP_DB_SAFETY_CHECK"):
+            main_db_path = os.path.join(os.path.dirname(__file__), "..", "..", "ratemyrations", "ratings.db")
+            if os.path.abspath(self.original_db_file) == os.path.abspath(main_db_path):
+                raise ValueError("ERROR: Main database is currently set as DB_FILE! This is dangerous.")
+        
+        ratemyrations.database.DB_FILE = self.db_path
+        
+        # Create tables using the actual database module
+        ratemyrations.database.create_tables()
+        
+        # Connect to the test database (same as used by create_tables)
         self.conn = sqlite3.connect(self.db_path)
-        self.create_tables()
         self.insert_test_data()
     
     def teardown(self):
         """Clean up test database."""
         if self.conn:
             self.conn.close()
+        
+        # Restore original DB_FILE
+        if self.original_db_file:
+            import ratemyrations.database
+            ratemyrations.database.DB_FILE = self.original_db_file
+        
+        # Clean up temporary file
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass  # File might not exist
     
-    def create_tables(self):
-        """Create database tables for testing."""
-        c = self.conn.cursor()
-        
-        # Create foods table
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS foods (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                station TEXT NOT NULL,
-                dining_hall TEXT NOT NULL,
-                meal TEXT NOT NULL,
-                UNIQUE(name, station, dining_hall, meal)
-            )
-        """)
-        
-        # Create ratings table
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS ratings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                food_id INTEGER NOT NULL,
-                user_id TEXT NOT NULL,
-                rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                date TEXT DEFAULT (date('now')),
-                UNIQUE(food_id, user_id, date),
-                FOREIGN KEY (food_id) REFERENCES foods (id)
-            )
-        """)
-        
-        # Create users table
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id TEXT PRIMARY KEY,
-                nickname TEXT,
-                is_banned BOOLEAN DEFAULT FALSE,
-                ban_reason TEXT
-            )
-        """)
-        
-        self.conn.commit()
     
     def insert_test_data(self):
         """Insert sample test data."""

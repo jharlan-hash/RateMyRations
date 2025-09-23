@@ -110,6 +110,57 @@ def add_food(name, station, dining_hall, meal):
     return food_id
 
 
+def add_foods_batch(foods_data):
+    """Adds multiple food items in batch for better performance."""
+    if not foods_data:
+        return []
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    food_ids = []
+    
+    # First, check which foods already exist
+    existing_foods = {}
+    for name, station, dining_hall, meal in foods_data:
+        c.execute(
+            "SELECT id FROM foods WHERE name = ? AND station = ? AND dining_hall = ? AND meal = ?",
+            (name, station, dining_hall, meal),
+        )
+        row = c.fetchone()
+        if row:
+            existing_foods[(name, station, dining_hall, meal)] = row[0]
+    
+    # Insert new foods
+    new_foods = []
+    for name, station, dining_hall, meal in foods_data:
+        if (name, station, dining_hall, meal) not in existing_foods:
+            new_foods.append((name, station, dining_hall, meal))
+    
+    if new_foods:
+        c.executemany(
+            "INSERT OR IGNORE INTO foods (name, station, dining_hall, meal) VALUES (?, ?, ?, ?)",
+            new_foods,
+        )
+    
+    # Get all food IDs in the same order as input
+    for name, station, dining_hall, meal in foods_data:
+        if (name, station, dining_hall, meal) in existing_foods:
+            food_ids.append(existing_foods[(name, station, dining_hall, meal)])
+        else:
+            # Find the ID of the newly inserted food
+            c.execute(
+                "SELECT id FROM foods WHERE name = ? AND station = ? AND dining_hall = ? AND meal = ?",
+                (name, station, dining_hall, meal),
+            )
+            row = c.fetchone()
+            food_ids.append(row[0] if row else None)
+    
+    conn.commit()
+    conn.close()
+    return food_ids
+
+
 def add_rating(food_id, user_id, rating, date=None):
     """Upserts a per-user rating. If rating == 0, delete the user's rating."""
     if date is None:

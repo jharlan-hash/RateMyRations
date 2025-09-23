@@ -36,6 +36,51 @@ CACHE = OrderedDict()
 CACHE_DURATION = timedelta(minutes=config.CACHE_MINUTES)
 CACHE_MAX_SIZE = config.CACHE_MAX_SIZE
 
+# Pre-warm cache for common dates
+def warm_cache_for_date(date_str):
+    """Pre-warm cache for a specific date."""
+    try:
+        with CACHE_LOCK:
+            if date_str in CACHE:
+                return  # Already cached
+        
+        menus = fetch_all_menus(date_str)
+        
+        with CACHE_LOCK:
+            CACHE[date_str] = {
+                "data": menus,
+                "timestamp": datetime.now()
+            }
+            CACHE.move_to_end(date_str)
+            
+            # Enforce cache size limit
+            while len(CACHE) > CACHE_MAX_SIZE:
+                CACHE.popitem(last=False)
+                
+    except Exception as e:
+        print(f"Error warming cache for {date_str}: {e}")
+
+# Background cache warming
+import atexit
+from threading import Thread
+
+def background_cache_warming():
+    """Warm cache for today and tomorrow in background."""
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        warm_cache_for_date(today)
+        warm_cache_for_date(tomorrow)
+        
+        print(f"Cache warmed for {today} and {tomorrow}")
+    except Exception as e:
+        print(f"Background cache warming failed: {e}")
+
+# Start background cache warming
+cache_thread = Thread(target=background_cache_warming, daemon=True)
+cache_thread.start()
+
 
 def _requests_session():
     session = requests.Session()
@@ -78,6 +123,8 @@ def get_menu(dining_hall_name, school, meal, date):
                 station_map = {menu_id: station_info["section_options"]["display_name"]
                                for menu_id, station_info in day.get("menu_info", {}).items()}
 
+                # Batch food additions for better performance
+                foods_to_add = []
                 for item in day.get("menu_items", []):
                     if item.get("food"):
                         station_name = station_map.get(str(item.get("menu_id")))
@@ -86,8 +133,21 @@ def get_menu(dining_hall_name, school, meal, date):
                                 categorized_menu[station_name] = []
 
                             food_name = item["food"]["name"]
-                            food_id = database.add_food(food_name, station_name, dining_hall_name, meal)
+                            foods_to_add.append((food_name, station_name, dining_hall_name, meal))
+                
+                # Add all foods in batch
+                food_ids = database.add_foods_batch(foods_to_add)
+                
+                # Build categorized menu with IDs
+                food_idx = 0
+                for item in day.get("menu_items", []):
+                    if item.get("food"):
+                        station_name = station_map.get(str(item.get("menu_id")))
+                        if station_name and station_name not in ignore_categories:
+                            food_name = item["food"]["name"]
+                            food_id = food_ids[food_idx]
                             categorized_menu[station_name].append({"id": food_id, "name": food_name, "meal": meal})
+                            food_idx += 1
 
                 if not categorized_menu:
                     print(f"No menu items found for {dining_hall_name} - {meal.capitalize()} on {date.strftime('%Y-%m-%d')}")
@@ -116,19 +176,25 @@ def fetch_all_menus(date_str):
     menus_to_fetch = config.MENUS_TO_FETCH
     menus = {"Burge": {}, "Catlett": {}, "Hillcrest": {}}
 
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=len(menus_to_fetch)) as executor:
         futures = [executor.submit(get_menu, name, school, meal, date) for name, school, meal in menus_to_fetch]
 
         for future in futures:
-            dining_hall_name, meal, menu_items = future.result()
+            try:
+                dining_hall_name, meal, menu_items = future.result(timeout=15)
+                
+                meal_name = "breakfast"
+                if "lunch" in meal:
+                    meal_name = "lunch"
+                elif "dinner" in meal:
+                    meal_name = "dinner"
 
-            meal_name = "breakfast"
-            if "lunch" in meal:
-                meal_name = "lunch"
-            elif "dinner" in meal:
-                meal_name = "dinner"
-
-            menus[dining_hall_name][meal_name] = menu_items
+                # Only add non-empty menus to reduce data transfer
+                if menu_items:
+                    menus[dining_hall_name][meal_name] = menu_items
+            except Exception as e:
+                print(f"Error processing menu future: {e}")
+                continue
 
     return menus
 
@@ -230,6 +296,7 @@ def delete_admin_rating():
 
 @app.route("/api/menus")
 def get_menus_route():
+    start_time = datetime.now()
     date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
     refresh = request.args.get("refresh", "false").lower() == "true"
 
@@ -250,13 +317,15 @@ def get_menus_route():
     if days_diff < -30:
         return jsonify({"error": "Date too far in the past. Please select a date within the last 30 days."}), 400
     
-    # Thread-safe cache access
-    with CACHE_LOCK:
-        cached = CACHE.get(date_str)
-        if cached and now - cached["timestamp"] < CACHE_DURATION and not refresh:
-            # Move to end to mark as most-recently used
-            CACHE.move_to_end(date_str)
-            return jsonify(cached["data"]) 
+        # Thread-safe cache access
+        with CACHE_LOCK:
+            cached = CACHE.get(date_str)
+            if cached and now - cached["timestamp"] < CACHE_DURATION and not refresh:
+                # Move to end to mark as most-recently used
+                CACHE.move_to_end(date_str)
+                response_time = (datetime.now() - start_time).total_seconds()
+                print(f"Cache hit for {date_str} in {response_time:.3f}s")
+                return jsonify(cached["data"])
 
     try:
         menus = fetch_all_menus(date_str)
@@ -269,6 +338,8 @@ def get_menus_route():
             while len(CACHE) > CACHE_MAX_SIZE:
                 CACHE.popitem(last=False)
         
+        response_time = (datetime.now() - start_time).total_seconds()
+        print(f"Menu fetch for {date_str} completed in {response_time:.3f}s")
         return jsonify(menus)
     except Exception as e:
         print(f"Error fetching menus for {date_str}: {e}")
@@ -277,6 +348,8 @@ def get_menus_route():
         with CACHE_LOCK:
             cached = CACHE.get(date_str)
             if cached:
+                response_time = (datetime.now() - start_time).total_seconds()
+                print(f"Fallback cache hit for {date_str} in {response_time:.3f}s")
                 return jsonify({"stale": True, **cached["data"]}), 200
         
         return jsonify({"error": "Failed to retrieve menus"}), 502
@@ -299,6 +372,7 @@ def internal_error_handler(e):
 
 @app.route("/api/rate", methods=["POST"])
 def rate_route():
+    start_time = datetime.now()
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid JSON data"}), 400
@@ -329,6 +403,8 @@ def rate_route():
         return jsonify({"error": "User is banned"}), 403
     
     database.add_rating(food_id, user_id, rating, date_str)
+    response_time = (datetime.now() - start_time).total_seconds()
+    print(f"Rating submission completed in {response_time:.3f}s")
     return jsonify({"status": "success"})
 
 @app.route("/api/delete-ratings", methods=["POST"])
@@ -365,7 +441,7 @@ def warm_cache():
         return jsonify({
             "status": "success", 
             "date": date_str,
-            "cached_menus": len([m for hall in menus.values() for meal in hall.values() for station in meal.values() for items in station.values()])
+            "cached_menus": len([item for hall in menus.values() for meal in hall.values() for station in meal.values() for item in station])
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

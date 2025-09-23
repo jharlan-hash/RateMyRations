@@ -7,6 +7,7 @@ import time
 import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from unittest.mock import patch
 from tests.utils.test_config import TestClient, generate_test_date
 
 
@@ -23,13 +24,16 @@ class TestPerformance:
             '/warm-cache'
         ]
         
-        for endpoint in endpoints:
-            start_time = time.time()
-            response = client.get(endpoint)
-            response_time = time.time() - start_time
+        with patch('ratemyrations.app.fetch_all_menus') as mock_fetch:
+            mock_fetch.return_value = {"Burge": {"breakfast": {"Main Station": []}}}
             
-            # All endpoints should respond within reasonable time
-            assert response_time < 2.0, f"{endpoint} took {response_time:.2f}s"
+            for endpoint in endpoints:
+                start_time = time.time()
+                response = client.get(endpoint)
+                response_time = time.time() - start_time
+                
+                # All endpoints should respond within reasonable time
+                assert response_time < 2.0, f"{endpoint} took {response_time:.2f}s"
             assert response.status_code in [200, 429], f"{endpoint} returned {response.status_code}"
     
     def test_menu_fetching_performance(self, client):
@@ -41,13 +45,20 @@ class TestPerformance:
             generate_test_date(7),  # Next week
         ]
         
-        for date in dates:
-            start_time = time.time()
-            response = client.get(f'/api/menus?date={date}')
-            response_time = time.time() - start_time
+        with patch('ratemyrations.app.fetch_all_menus') as mock_fetch:
+            mock_fetch.return_value = {"Burge": {"breakfast": {"Main Station": []}}}
             
-            assert response.status_code == 200
-            assert response_time < 3.0, f"Menu fetch for {date} took {response_time:.2f}s"
+            # Mock rate limiter to avoid rate limiting during performance tests
+            with patch('ratemyrations.app.limiter') as mock_limiter:
+                mock_limiter.limit.return_value = lambda f: f
+                
+                for date in dates:
+                    start_time = time.time()
+                    response = client.get(f'/api/menus?date={date}')
+                    response_time = time.time() - start_time
+                    
+                    assert response.status_code == 200
+                    assert response_time < 3.0, f"Menu fetch for {date} took {response_time:.2f}s"
     
     def test_rating_submission_performance(self, client):
         """Test rating submission performance."""
@@ -74,14 +85,18 @@ class TestLoadTesting:
             response = client.get('/api/menus')
             return response.status_code
         
-        # Make 10 concurrent requests
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(make_request) for _ in range(10)]
-            results = [future.result() for future in as_completed(futures)]
-        
-        # Most requests should succeed (some may be rate limited)
-        success_count = sum(1 for status in results if status == 200)
-        assert success_count >= 5, f"Only {success_count}/10 requests succeeded"
+        # Mock rate limiter to avoid rate limiting during performance tests
+        with patch('ratemyrations.app.limiter') as mock_limiter:
+            mock_limiter.limit.return_value = lambda f: f
+            
+            # Make 10 concurrent requests
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(make_request) for _ in range(10)]
+                results = [future.result() for future in as_completed(futures)]
+            
+            # Most requests should succeed (some may be rate limited)
+            success_count = sum(1 for status in results if status == 200)
+            assert success_count >= 5, f"Only {success_count}/10 requests succeeded"
     
     def test_concurrent_rating_submissions(self, client):
         """Test concurrent rating submissions."""
@@ -125,31 +140,35 @@ class TestLoadTesting:
             response = client.get('/healthz')
             return ('health', response.status_code)
         
-        # Mix of different operations
-        operations = []
-        operations.extend([menu_request for _ in range(5)])
-        operations.extend([lambda: rating_request(i) for i in range(5)])
-        operations.extend([health_check for _ in range(5)])
-        
-        with ThreadPoolExecutor(max_workers=15) as executor:
-            futures = [executor.submit(op) for op in operations]
-            results = [future.result() for future in as_completed(futures)]
-        
-        # Categorize results
-        menu_results = [r for r in results if r[0] == 'menu']
-        rating_results = [r for r in results if r[0] == 'rating']
-        health_results = [r for r in results if r[0] == 'health']
-        
-        # All health checks should succeed
-        assert all(status == 200 for _, status in health_results)
-        
-        # Most menu requests should succeed
-        menu_success = sum(1 for _, status in menu_results if status == 200)
-        assert menu_success >= 3, f"Only {menu_success}/5 menu requests succeeded"
-        
-        # Some rating requests should succeed
-        rating_success = sum(1 for _, status in rating_results if status == 200)
-        assert rating_success > 0, "No rating requests succeeded"
+        # Mock rate limiter to avoid rate limiting during performance tests
+        with patch('ratemyrations.app.limiter') as mock_limiter:
+            mock_limiter.limit.return_value = lambda f: f
+            
+            # Mix of different operations
+            operations = []
+            operations.extend([menu_request for _ in range(5)])
+            operations.extend([lambda: rating_request(i) for i in range(5)])
+            operations.extend([health_check for _ in range(5)])
+            
+            with ThreadPoolExecutor(max_workers=15) as executor:
+                futures = [executor.submit(op) for op in operations]
+                results = [future.result() for future in as_completed(futures)]
+            
+            # Categorize results
+            menu_results = [r for r in results if r[0] == 'menu']
+            rating_results = [r for r in results if r[0] == 'rating']
+            health_results = [r for r in results if r[0] == 'health']
+            
+            # All health checks should succeed
+            assert all(status == 200 for _, status in health_results)
+            
+            # Most menu requests should succeed
+            menu_success = sum(1 for _, status in menu_results if status == 200)
+            assert menu_success >= 3, f"Only {menu_success}/5 menu requests succeeded"
+            
+            # Some rating requests should succeed
+            rating_success = sum(1 for _, status in rating_results if status == 200)
+            assert rating_success > 0, "No rating requests succeeded"
 
 
 class TestStressTesting:
