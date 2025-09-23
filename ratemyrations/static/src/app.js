@@ -16,6 +16,9 @@ import { DINING_HALLS, MEALS, EVENTS } from './utils/constants.js';
 import StarRating from './components/StarRating.js';
 import DatePicker from './components/DatePicker.js';
 import MenuContainer from './components/MenuContainer.js';
+import AdminConsole from './components/AdminConsole.js';
+import ErrorBoundary from './components/ErrorBoundary.js';
+import LoadingSpinner from './components/LoadingSpinner.js';
 
 /**
  * Main application class
@@ -91,16 +94,32 @@ class RateMyRationsApp {
     console.log('📦 Registering components...');
     
     // Components are auto-registered when imported
-    // StarRating, DatePicker, and MenuContainer are now available
-    console.log('✅ Core components registered');
+    // All components are now available: StarRating, DatePicker, MenuContainer, 
+    // AdminConsole, ErrorBoundary, LoadingSpinner
+    console.log('✅ All components registered');
   }
   
   /**
    * Initialize component instances
    */
   initializeComponentInstances() {
-    // Component instances will be initialized here in Phase 2
     console.log('🔧 Initializing component instances...');
+    
+    // Set up admin toggle
+    this.setupAdminToggle();
+  }
+  
+  /**
+   * Set up admin console toggle
+   */
+  setupAdminToggle() {
+    const adminToggle = document.querySelector('.admin-toggle');
+    if (adminToggle) {
+      adminToggle.addEventListener('click', () => {
+        const adminMode = !this.state.getState('adminMode');
+        this.state.setState({ adminMode });
+      });
+    }
   }
   
   /**

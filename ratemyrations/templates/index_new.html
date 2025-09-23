@@ -23,20 +23,10 @@
         </header>
 
         <main class="app-main">
-            <div class="loading-indicator" id="loading-indicator">
-                <div class="spinner"></div>
-                <p>Loading menus...</p>
-            </div>
-
-            <div class="error-container" id="error-container" style="display: none;">
-                <div class="error-message">
-                    <h3>Error</h3>
-                    <p id="error-text">An error occurred while loading the application.</p>
-                    <button class="retry-btn" onclick="location.reload()">Retry</button>
-                </div>
-            </div>
-
-            <menu-container></menu-container>
+            <error-boundary>
+                <loading-spinner message="Loading menus..." overlay="true"></loading-spinner>
+                <menu-container></menu-container>
+            </error-boundary>
         </main>
 
         <footer class="app-footer">
@@ -44,10 +34,13 @@
                 <p>&copy; 2025 RateMyRations. Built for University of Iowa students.</p>
                 <nav class="footer-nav">
                     <a href="/about" class="footer-link">About</a>
-                    <a href="/admin" class="footer-link">Admin</a>
+                    <button class="footer-link admin-toggle" type="button">Admin</button>
                 </nav>
             </div>
         </footer>
+
+        <!-- Admin Console -->
+        <admin-console></admin-console>
     </div>
 
     <!-- Load the new modular frontend -->
