@@ -10,7 +10,9 @@
     "build": "node ratemyrations/static/build/build.js",
     "dev": "node ratemyrations/static/build/dev.js",
     "build:prod": "NODE_ENV=production npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "repository": {
     "type": "git",
@@ -24,9 +26,14 @@
   },
   "homepage": "https://github.com/jharlan-hash/RateMyRations#readme",
   "devDependencies": {
+    "@babel/core": "^7.23.9",
+    "@babel/preset-env": "^7.23.9",
     "autoprefixer": "^10.4.21",
+    "babel-jest": "^29.7.0",
     "esbuild": "^0.19.12",
     "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "jsdom": "^22.1.0",
     "postcss": "^8.5.6",
     "prettier": "^3.2.5"
   }
