@@ -1,0 +1,33 @@
+{
+  "name": "ratemyrations",
+  "version": "1.0.0",
+  "description": "A web application for viewing and rating dining hall menus at the University of Iowa. Students can browse daily menus from Burge, Catlett, and Hillcrest dining halls and rate individual food items.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "node ratemyrations/static/build/build.js",
+    "dev": "node ratemyrations/static/build/dev.js",
+    "build:prod": "NODE_ENV=production npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jharlan-hash/RateMyRations.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jharlan-hash/RateMyRations/issues"
+  },
+  "homepage": "https://github.com/jharlan-hash/RateMyRations#readme",
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.19.12",
+    "eslint": "^8.57.0",
+    "postcss": "^8.5.6",
+    "prettier": "^3.2.5"
+  }
+}
