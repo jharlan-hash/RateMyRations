@@ -12,10 +12,10 @@ import BaseComponent from './components/BaseComponent.js';
 import { getCurrentMeal, debounce } from './utils/helpers.js';
 import { DINING_HALLS, MEALS, EVENTS } from './utils/constants.js';
 
-// Import components (will be created in Phase 2)
-// import StarRating from './components/StarRating.js';
-// import DatePicker from './components/DatePicker.js';
-// import MenuContainer from './components/MenuContainer.js';
+// Import components
+import StarRating from './components/StarRating.js';
+import DatePicker from './components/DatePicker.js';
+import MenuContainer from './components/MenuContainer.js';
 
 /**
  * Main application class
@@ -88,8 +88,11 @@ class RateMyRationsApp {
    * Register custom elements
    */
   registerComponents() {
-    // Components will be registered here in Phase 2
     console.log('📦 Registering components...');
+    
+    // Components are auto-registered when imported
+    // StarRating, DatePicker, and MenuContainer are now available
+    console.log('✅ Core components registered');
   }
   
   /**
