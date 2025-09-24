@@ -7,7 +7,8 @@ document.addEventListener("DOMContentLoaded", function() {
     dateInput.value = `${yyyy}-${mm}-${dd}`;
 
     let ratings = {};
-    let userRatings = {};
+    let allUserRatings = JSON.parse(localStorage.getItem("userRatings")) || {};
+    let userRatings = {}; // Will be filtered by current menu
     let browserId = localStorage.getItem("browserId");
     if (!browserId) {
         browserId = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -31,17 +32,6 @@ document.addEventListener("DOMContentLoaded", function() {
             "Dinner": { start: 15.5, end: 20 }
         }
     };
-
-    function loadUserRatingsForDate(date) {
-        const allUserRatings = JSON.parse(localStorage.getItem("userRatings")) || {};
-        userRatings = allUserRatings[date] || {};
-    }
-
-    function saveUserRatingsForDate(date) {
-        const allUserRatings = JSON.parse(localStorage.getItem("userRatings")) || {};
-        allUserRatings[date] = userRatings;
-        localStorage.setItem("userRatings", JSON.stringify(allUserRatings));
-    }
 
     function getCurrentMeal(diningHall) {
         const now = new Date();
@@ -158,7 +148,14 @@ document.addEventListener("DOMContentLoaded", function() {
                         } else {
                             userRatings[foodId] = newRating;
                         }
-                        saveUserRatingsForDate(dateInput.value);
+                        
+                        // Also update the global userRatings in localStorage
+                        if (newRating === 0) {
+                            delete allUserRatings[foodId];
+                        } else {
+                            allUserRatings[foodId] = newRating;
+                        }
+                        localStorage.setItem("userRatings", JSON.stringify(allUserRatings));
                         console.log('Rating updated successfully');
                         
                         // Update aggregates again now that userRatings is properly set
@@ -361,6 +358,24 @@ document.addEventListener("DOMContentLoaded", function() {
                 // Filter ratings to only include foods in today's menu
                 ratings = filterRatingsByMenu(ratings, data);
                 
+                // Filter userRatings to only include items that exist in the current menu
+                const filteredUserRatings = {};
+                for (const diningHall in data) {
+                    for (const meal in data[diningHall]) {
+                        for (const station in data[diningHall][meal]) {
+                            const items = data[diningHall][meal][station];
+                            if (items && items.length > 0) {
+                                for (const item of items) {
+                                    if (allUserRatings[item.id]) {
+                                        filteredUserRatings[item.id] = allUserRatings[item.id];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                userRatings = filteredUserRatings;
+                
                 const menusContainer = document.getElementById("menus-container");
                 menusContainer.innerHTML = ""; // Clear previous menus
                 for (const diningHall in data) {
@@ -487,6 +502,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                     yourLabel.textContent = 'Your rating';
                                     yourLabel.classList.add('rating-label');
                                     yourRow.appendChild(yourLabel);
+                                    // Only show user rating if this item exists in the current date's menu
                                     const myRating = userRatings[item.id] ? parseInt(userRatings[item.id], 10) : 0;
                                     const yourStars = renderStars(myRating, item.id, true);
                                     yourStars.classList.add('your-stars');
@@ -1014,7 +1030,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // Load ratings first, then menus to ensure ratings are available
-    loadUserRatingsForDate(dateInput.value);
     fetchRatings().then(() => {
         fetchMenus(dateInput.value);
     }).catch(error => {
@@ -1022,9 +1037,6 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     dateInput.addEventListener("change", function() {
-        // Load user ratings for the new date first
-        loadUserRatingsForDate(this.value);
-        
         // Load ratings first, then menus
         fetchRatings().then(() => {
             fetchMenus(this.value);
