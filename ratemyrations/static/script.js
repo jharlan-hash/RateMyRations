@@ -154,10 +154,18 @@ document.addEventListener("DOMContentLoaded", function() {
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
                         console.log('Rating updated successfully');
                         
-                        // Update aggregates again now that userRatings is properly set
-                        updateLiveAggregates(starRatingContainer, newRating);
-                        
-                        // NO background fetch - it overwrites our community display
+                        // Fetch updated ratings from server to get accurate community data
+                        fetchRatings().then(() => {
+                            console.log('Refreshed ratings data after submission');
+                            // Update community display with fresh server data
+                            updateCommunityRatingDisplay(starRatingContainer, newRating);
+                            // Force DOM to update, then calculate aggregates
+                            requestAnimationFrame(() => {
+                                updateLiveAggregates(starRatingContainer, newRating);
+                            });
+                        }).catch(e => {
+                            console.warn('Failed to refresh ratings after submission:', e);
+                        });
                     }).catch(error => {
                         console.error('Error updating rating:', error);
                         
@@ -362,6 +370,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     const diningHallTitle = document.createElement("h2");
                     diningHallTitle.textContent = diningHall;
+                    diningHallTitle.dataset.originalName = diningHall; // Store original name
                     diningHallDiv.appendChild(diningHallTitle);
 
                     const diningHallContent = document.createElement("div");
@@ -388,6 +397,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                         const mealTitle = document.createElement("h3");
                         mealTitle.textContent = meal.charAt(0).toUpperCase() + meal.slice(1);
+                        mealTitle.dataset.originalName = meal; // Store original meal name
                         mealDiv.appendChild(mealTitle);
 
                         const mealContent = document.createElement("div");
@@ -406,6 +416,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                                 const stationTitle = document.createElement("h4");
                                 stationTitle.textContent = station;
+                                stationTitle.dataset.originalName = station; // Store original name
                                 stationDiv.appendChild(stationTitle);
 
                                 const menuList = document.createElement("ul");
@@ -542,11 +553,8 @@ document.addEventListener("DOMContentLoaded", function() {
                         mealTitle.dataset.diningHallContent = diningHallId;
                     }
                     
-                    // Add dining hall rating if available (already filtered by menu)
-                    if (ratings.dining_halls[diningHall]) {
-                        const avgRating = ratings.dining_halls[diningHall].avg_rating;
-                        diningHallTitle.appendChild(renderStars(avgRating, null, false));
-                    }
+                    // Skip backend dining hall ratings - we calculate them from meal periods instead
+                    // Backend uses old method (all food items), we use meal period averaging
                     
                     menusContainer.appendChild(diningHallDiv);
 
@@ -554,8 +562,16 @@ document.addEventListener("DOMContentLoaded", function() {
                     diningHallTitle.dataset.diningHallId = diningHallId;
                 }
 
-                // After building the menu, apply aggregates based on current ratings
-                try { updateAllAggregatesFromRatings(); } catch (e) { console.warn('Aggregate update failed:', e); }
+                // After building the menu, calculate dining hall ratings from meal periods
+                try { 
+                    updateAllAggregatesFromRatings();
+                    // Calculate dining hall ratings using meal period averaging (not backend data)
+                    Object.keys(data).forEach(diningHall => {
+                        updateDiningHallRating(diningHall);
+                    });
+                } catch (e) { 
+                    console.warn('Aggregate update failed:', e); 
+                }
             })
             .catch(error => {
                 console.error('Error fetching menus:', error);
@@ -634,17 +650,21 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function updateLiveAggregates(starContainer, newRating) {
         try {
+            console.log(`=== updateLiveAggregates called ===`);
+            console.log(`newRating: ${newRating}`);
+            
             const li = starContainer.closest('li[data-food-id]');
             if (!li) {
                 console.warn('Could not find food item li');
                 return;
             }
             
-            const station = li.closest('.station').querySelector('h4').textContent.trim();
-            const diningHall = li.closest('.dining-hall').querySelector('h2').textContent.trim();
+            const station = li.closest('.station').querySelector('h4').dataset.originalName;
+            const diningHall = li.closest('.dining-hall').querySelector('h2').dataset.originalName;
             const mealElement = li.closest('.meal');
-            const mealTitle = mealElement.querySelector('h3').textContent.trim().toLowerCase();
+            const mealTitle = mealElement.querySelector('h3').dataset.originalName;
             
+            console.log(`Extracted: station=${station}, diningHall=${diningHall}, mealTitle=${mealTitle}`);
             console.log(`Updating aggregates for: ${station} in ${diningHall} ${mealTitle} with rating ${newRating}`);
             
             // Update station aggregate
@@ -669,22 +689,96 @@ document.addEventListener("DOMContentLoaded", function() {
             const communityRow = li.querySelector('.community-rating-row');
             if (!communityRow) return;
             
+            // Get the food key to calculate true community average
+            const foodName = li.querySelector('.food-item-name').textContent;
+            const station = li.closest('.station').querySelector('h4').dataset.originalName;
+            const diningHall = li.closest('.dining-hall').querySelector('h2').dataset.originalName;
+            const mealDiv = li.closest('.meal');
+            const mealTitle = mealDiv.querySelector('h3');
+            const mealSlug = mealTitle ? mealTitle.dataset.originalName : '';
+            
+            // Map to original meal slug
+            let originalMealSlug = mealSlug;
+            if (diningHall === 'Catlett') {
+                if (mealSlug === 'breakfast') originalMealSlug = 'breakfast-2';
+                else if (mealSlug === 'lunch') originalMealSlug = 'lunch-2';
+                else if (mealSlug === 'dinner') originalMealSlug = 'dinner-2';
+            } else if (diningHall === 'Hillcrest') {
+                if (mealSlug === 'breakfast') originalMealSlug = 'breakfast-3';
+                else if (mealSlug === 'lunch') originalMealSlug = 'lunch-3';
+            } else if (diningHall === 'Burge') {
+                if (mealSlug === 'dinner') originalMealSlug = 'dinner-3';
+            }
+            
+            const foodKey = `${foodName}_${station}_${diningHall}_${originalMealSlug}`;
+            const foodId = parseInt(li.getAttribute('data-food-id'), 10);
+            
+            // Get community rating from server
+            const communityRating = ratings.foods[foodKey];
+            const userRating = userRatings[foodId] ? parseInt(userRatings[foodId], 10) : 0;
+            
+            // The server data ALREADY includes all submitted ratings, including this user's
+            // So we should just display the server data as-is, not add the user rating again
+            let trueAverage = 0;
+            let trueCount = 0;
+            
+            if (communityRating && communityRating.avg_rating > 0) {
+                // Use server data directly - it's already accurate
+                trueAverage = communityRating.avg_rating;
+                trueCount = communityRating.rating_count;
+                
+                console.log(`Using server community data: ${trueAverage.toFixed(2)} stars, ${trueCount} ratings`);
+            } else if (userRating > 0) {
+                // No server data yet, but user just rated - show user rating
+                // This handles the case where user is first to rate
+                trueAverage = userRating;
+                trueCount = 1;
+                
+                console.log(`No server data, using user rating: ${userRating} stars`);
+            }
+            
+            console.log(`Community display update: ${foodName}, True average: ${trueAverage}, Count: ${trueCount}`);
+            
             const starsInner = communityRow.querySelector('.stars-inner');
             const ratingValue = communityRow.querySelector('.rating-value');
             const countSpan = communityRow.querySelector('.rating-count');
             
             if (starsInner) {
-                const percentage = (newRating / 5) * 100;
+                const percentage = (trueAverage / 5) * 100;
                 starsInner.style.width = `${percentage}%`;
             }
             
             if (ratingValue) {
-                ratingValue.textContent = `(${newRating.toFixed(2)})`;
+                ratingValue.textContent = `(${trueAverage.toFixed(2)})`;
             }
             
             if (countSpan) {
-                countSpan.textContent = ` 1`; // Show as first rating
+                countSpan.textContent = ` ${trueCount}`;
             }
+            
+            // Update histogram if it exists
+            const existingHistogram = communityRow.querySelector('.histogram');
+            if (existingHistogram) {
+                existingHistogram.remove();
+            }
+            
+            // Create histogram from server data (already includes all ratings)
+            if (communityRating && communityRating.dist) {
+                const hist = document.createElement('div');
+                hist.classList.add('histogram');
+                
+                // Use server distribution directly - it's already accurate
+                const total = Object.values(communityRating.dist).reduce((a,b)=>a+b,0) || 1;
+                for (let i=1;i<=5;i++) {
+                    const bar = document.createElement('div');
+                    bar.classList.add('bar');
+                    bar.style.height = `${(communityRating.dist[i] / total) * 32 + 2}px`;
+                    bar.title = `${i}★: ${communityRating.dist[i]||0}`;
+                    hist.appendChild(bar);
+                }
+                communityRow.appendChild(hist);
+            }
+            
         } catch (e) {
             console.warn('Failed to update community rating display:', e);
         }
@@ -697,37 +791,85 @@ document.addEventListener("DOMContentLoaded", function() {
         items.forEach(li => {
             const foodId = parseInt(li.getAttribute('data-food-id'), 10);
             
-            // Get rating from userRatings (most reliable source)
-            const rating = userRatings[foodId] ? parseInt(userRatings[foodId], 10) : 0;
-            console.log('ratings object:', ratings);
-            console.log('ratings.foods:', ratings.foods);
+            // Get the food key to look up server-side community ratings
+            const foodName = li.querySelector('.food-item-name').textContent;
+            const station = li.closest('.station').querySelector('h4').dataset.originalName;
+            const diningHall = li.closest('.dining-hall').querySelector('h2').dataset.originalName;
+            const mealDiv = li.closest('.meal');
+            const mealTitle = mealDiv.querySelector('h3');
+            const mealSlug = mealTitle ? mealTitle.dataset.originalName : '';
             
-            if (rating > 0) {
-                total += rating;
-                count++;
-                console.log(`Found rating ${rating} for food ${foodId}`);
+            console.log(`Meal Title: ${mealTitle ? mealTitle.textContent : 'null'}, Original Meal: ${mealSlug}`);
+            
+            // Map to original meal slug (same logic as in filterRatingsByMenu)
+            let originalMealSlug = mealSlug;
+            if (diningHall === 'Catlett') {
+                if (mealSlug === 'breakfast') originalMealSlug = 'breakfast-2';
+                else if (mealSlug === 'lunch') originalMealSlug = 'lunch-2';
+                else if (mealSlug === 'dinner') originalMealSlug = 'dinner-2';
+            } else if (diningHall === 'Hillcrest') {
+                if (mealSlug === 'breakfast') originalMealSlug = 'breakfast-3';
+                else if (mealSlug === 'lunch') originalMealSlug = 'lunch-3';
+                // dinner stays 'dinner' for Hillcrest 
+            } else if (diningHall === 'Burge') {
+                if (mealSlug === 'dinner') originalMealSlug = 'dinner-3';
+                // breakfast and lunch stay the same for Burge
+            }
+            
+            const foodKey = `${foodName}_${station}_${diningHall}_${originalMealSlug}`;
+            
+            // Get community rating from server data
+            const communityRating = ratings.foods[foodKey];
+            const userRating = userRatings[foodId] ? parseInt(userRatings[foodId], 10) : 0;
+            
+            // Only log for the specific food we're testing
+            if (foodName === 'Lemon Basil Salmon') {
+                console.log(`🐟 Food: ${foodName}, Key: ${foodKey}`);
+                console.log(`🐟 Community rating:`, communityRating);
+                console.log(`🐟 User rating: ${userRating}`);
+            }
+            
+            // Use server community data for true crowdsourcing (includes all users' ratings)
+            if (communityRating && communityRating.avg_rating > 0) {
+                // Use the community average weighted by count (includes all ratings from all users)
+                total += communityRating.avg_rating * communityRating.rating_count;
+                count += communityRating.rating_count;
+                if (foodName === 'Lemon Basil Salmon') {
+                    console.log(`🐟 Added community: ${communityRating.avg_rating} * ${communityRating.rating_count} = ${communityRating.avg_rating * communityRating.rating_count}`);
+                }
+            } else if (userRating > 0) {
+                // Fallback to user rating if no community data (shouldn't happen after server refresh)
+                total += userRating;
+                count += 1;
+                if (foodName === 'Lemon Basil Salmon') {
+                    console.log(`🐟 Added user rating: ${userRating}`);
+                }
             }
         });
         
-        console.log(`Calculated average: ${total}/${count} = ${count > 0 ? total / count : 0}`);
-        return count > 0 ? total / count : 0;
+        const average = count > 0 ? total / count : 0;
+        console.log(`Calculated average: ${total}/${count} = ${average.toFixed(2)}`);
+        return average;
     }
 
     function updateStationRating(diningHall, station, specificMealPeriod) {
+        console.log(`=== updateStationRating called ===`);
+        console.log(`Looking for: ${station} in ${diningHall} ${specificMealPeriod}`);
+        
         // Find all food items in this SPECIFIC station within the SPECIFIC meal period
         const stationItems = [];
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
-            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+            if (hallTitle && hallTitle.dataset.originalName === diningHall) {
                 hall.querySelectorAll('.meal').forEach(meal => {
                     const mealTitle = meal.querySelector('h3');
-                    const mealName = mealTitle ? mealTitle.textContent.trim().toLowerCase() : '';
+                    const mealName = mealTitle ? mealTitle.dataset.originalName : 'NO_TITLE';
                     
                     // Only look in the specific meal period
                     if (mealName === specificMealPeriod) {
                         meal.querySelectorAll('.station').forEach(st => {
                             const stTitle = st.querySelector('h4');
-                            if (stTitle && stTitle.textContent.trim() === station) {
+                            if (stTitle && stTitle.dataset.originalName === station) {
                                 st.querySelectorAll('li[data-food-id]').forEach(li => {
                                     stationItems.push(li);
                                 });
@@ -738,21 +880,23 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
         
+        console.log(`Found ${stationItems.length} items for station calculation`);
         const avg = calculateAverageForItems(stationItems);
+        console.log(`Calculated station average: ${avg.toFixed(2)}`);
         
         // Update ONLY the station header in the specific meal period
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
-            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+            if (hallTitle && hallTitle.dataset.originalName === diningHall) {
                 hall.querySelectorAll('.meal').forEach(meal => {
                     const mealTitle = meal.querySelector('h3');
-                    const mealName = mealTitle ? mealTitle.textContent.trim().toLowerCase() : '';
+                    const mealName = mealTitle ? mealTitle.dataset.originalName : 'NO_TITLE';
                     
                     // Only update in the specific meal period
                     if (mealName === specificMealPeriod) {
                         meal.querySelectorAll('.station').forEach(st => {
                             const stTitle = st.querySelector('h4');
-                            if (stTitle && stTitle.textContent.trim() === station) {
+                            if (stTitle && stTitle.dataset.originalName === station) {
                                 // Remove existing rating display
                                 const existing = stTitle.querySelector('.star-rating-container');
                                 if (existing) existing.remove();
@@ -769,18 +913,21 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
         
-        console.log(`Updated station ${station} in ${diningHall} ${specificMealPeriod} rating to ${avg.toFixed(2)}`);
+        console.log(`=== updateStationRating complete ===`);
     }
 
     function updateMealRating(diningHall, mealTitle) {
+        console.log(`=== updateMealRating called ===`);
+        console.log(`Looking for meal: ${mealTitle} in ${diningHall}`);
+        
         // Find all food items in this meal
         const mealItems = [];
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
-            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+            if (hallTitle && hallTitle.dataset.originalName === diningHall) {
                 hall.querySelectorAll('.meal').forEach(meal => {
                     const mTitle = meal.querySelector('h3');
-                    if (mTitle && mTitle.textContent.trim().toLowerCase() === mealTitle) {
+                    if (mTitle && mTitle.dataset.originalName === mealTitle) {
                         meal.querySelectorAll('li[data-food-id]').forEach(li => {
                             mealItems.push(li);
                         });
@@ -789,15 +936,17 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
         
+        console.log(`Found ${mealItems.length} items for meal calculation`);
         const avg = calculateAverageForItems(mealItems);
+        console.log(`Calculated meal average: ${avg.toFixed(2)}`);
         
         // Update meal header rating display
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
-            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+            if (hallTitle && hallTitle.dataset.originalName === diningHall) {
                 hall.querySelectorAll('.meal').forEach(meal => {
                     const mTitle = meal.querySelector('h3');
-                    if (mTitle && mTitle.textContent.trim().toLowerCase() === mealTitle) {
+                    if (mTitle && mTitle.dataset.originalName === mealTitle) {
                         // Remove existing rating display
                         const existing = mTitle.querySelector('.star-rating-container');
                         if (existing) existing.remove();
@@ -813,40 +962,64 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
         
-        console.log(`Updated meal ${mealTitle} rating to ${avg.toFixed(2)}`);
+        console.log(`=== updateMealRating complete ===`);
     }
 
     function updateDiningHallRating(diningHall) {
-        // Find all food items in this dining hall
-        const hallItems = [];
+        console.log(`=== updateDiningHallRating called ===`);
+        console.log(`Looking for dining hall: ${diningHall}`);
+        
+        // Calculate meal period averages first, then average those
+        const mealAverages = [];
+        
+        // Find all meals in this dining hall
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
-            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
-                hall.querySelectorAll('li[data-food-id]').forEach(li => {
-                    hallItems.push(li);
+            if (hallTitle && hallTitle.dataset.originalName === diningHall) {
+                hall.querySelectorAll('.meal').forEach(meal => {
+                    const mealTitle = meal.querySelector('h3');
+                    const mealName = mealTitle ? mealTitle.dataset.originalName : '';
+                    
+                    // Get all food items in this meal
+                    const mealItems = [];
+                    meal.querySelectorAll('li[data-food-id]').forEach(li => {
+                        mealItems.push(li);
+                    });
+                    
+                    if (mealItems.length > 0) {
+                        const mealAvg = calculateAverageForItems(mealItems);
+                        if (mealAvg > 0) {
+                            mealAverages.push(mealAvg);
+                            console.log(`Meal ${mealName}: ${mealAvg.toFixed(2)} stars`);
+                        }
+                    }
                 });
             }
         });
         
-        const avg = calculateAverageForItems(hallItems);
+        // Average the meal period averages
+        const diningHallAvg = mealAverages.length > 0 ? 
+            mealAverages.reduce((sum, avg) => sum + avg, 0) / mealAverages.length : 0;
+        
+        console.log(`Calculated dining hall average from ${mealAverages.length} meal periods: ${diningHallAvg.toFixed(2)}`);
         
         // Update dining hall header rating display
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
-            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+            if (hallTitle && hallTitle.dataset.originalName === diningHall) {
                 // Remove existing rating display
                 const existing = hallTitle.querySelector('.star-rating-container');
                 if (existing) existing.remove();
                 
                 // Add new rating display if we have ratings
-                if (avg > 0) {
-                    const ratingDisplay = renderStars(avg, null, false);
+                if (diningHallAvg > 0) {
+                    const ratingDisplay = renderStars(diningHallAvg, null, false);
                     hallTitle.appendChild(ratingDisplay);
                 }
             }
         });
         
-        console.log(`Updated dining hall ${diningHall} rating to ${avg.toFixed(2)}`);
+        console.log(`=== updateDiningHallRating complete ===`);
     }
 
     function updateAllAggregatesFromRatings() {
