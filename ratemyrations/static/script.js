@@ -197,7 +197,6 @@ document.addEventListener("DOMContentLoaded", function() {
             starRatingContainer.appendChild(ratingValue);
         }
 
-
         return starRatingContainer;
     }
 
@@ -229,6 +228,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         for (const item of items) {
                             // Use the original meal slug from the menu data, not normalized display name
                             // We need to map back to the original meal slug used in the database
+                            // I just wish the menu data was consistent
                             let originalMealSlug = meal;
                             if (diningHall === 'Catlett') {
                                 if (meal === 'breakfast') originalMealSlug = 'breakfast-2';
@@ -237,10 +237,10 @@ document.addEventListener("DOMContentLoaded", function() {
                             } else if (diningHall === 'Hillcrest') {
                                 if (meal === 'breakfast') originalMealSlug = 'breakfast-3';
                                 else if (meal === 'lunch') originalMealSlug = 'lunch-3';
-                                // dinner stays 'dinner' for Hillcrest
+                                // dinner stays 'dinner' for Hillcrest 
                             } else if (diningHall === 'Burge') {
                                 if (meal === 'dinner') originalMealSlug = 'dinner-3';
-                                // breakfast and lunch stay the same for Burge
+                                // breakfast and lunch stay the same for Burge. Obviously. Because of course they do.
                             }
                             
                             const foodKey = `${item.name}_${station}_${diningHall}_${originalMealSlug}`;
@@ -271,10 +271,8 @@ document.addEventListener("DOMContentLoaded", function() {
         const stationRatings = {};
         for (const [foodKey, rating] of Object.entries(filteredRatings.foods)) {
             const parts = foodKey.split('_');
-            const foodName = parts[0];
             const station = parts[1];
             const diningHall = parts[2];
-            const meal = parts[3];
             const stationKey = `${station}_${diningHall}`;
             
             if (!stationRatings[stationKey]) {
