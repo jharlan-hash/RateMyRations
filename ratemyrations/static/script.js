@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", function() {
     dateInput.value = `${yyyy}-${mm}-${dd}`;
 
     let ratings = {};
-    let userRatings = JSON.parse(localStorage.getItem("userRatings")) || {};
+    let userRatings = {};
     let browserId = localStorage.getItem("browserId");
     if (!browserId) {
         browserId = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -31,6 +31,17 @@ document.addEventListener("DOMContentLoaded", function() {
             "Dinner": { start: 15.5, end: 20 }
         }
     };
+
+    function loadUserRatingsForDate(date) {
+        const allUserRatings = JSON.parse(localStorage.getItem("userRatings")) || {};
+        userRatings = allUserRatings[date] || {};
+    }
+
+    function saveUserRatingsForDate(date) {
+        const allUserRatings = JSON.parse(localStorage.getItem("userRatings")) || {};
+        allUserRatings[date] = userRatings;
+        localStorage.setItem("userRatings", JSON.stringify(allUserRatings));
+    }
 
     function getCurrentMeal(diningHall) {
         const now = new Date();
@@ -147,7 +158,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         } else {
                             userRatings[foodId] = newRating;
                         }
-                        localStorage.setItem("userRatings", JSON.stringify(userRatings));
+                        saveUserRatingsForDate(dateInput.value);
                         console.log('Rating updated successfully');
                         
                         // Update aggregates again now that userRatings is properly set
@@ -1003,6 +1014,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // Load ratings first, then menus to ensure ratings are available
+    loadUserRatingsForDate(dateInput.value);
     fetchRatings().then(() => {
         fetchMenus(dateInput.value);
     }).catch(error => {
@@ -1010,6 +1022,9 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     dateInput.addEventListener("change", function() {
+        // Load user ratings for the new date first
+        loadUserRatingsForDate(this.value);
+        
         // Load ratings first, then menus
         fetchRatings().then(() => {
             fetchMenus(this.value);
