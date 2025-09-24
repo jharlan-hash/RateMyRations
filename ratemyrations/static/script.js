@@ -510,8 +510,23 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         
                         // Add meal rating if available (already filtered by menu)
-                        if (ratings.meals[`${diningHall}_${meal}`]) {
-                            const avgRating = ratings.meals[`${diningHall}_${meal}`].avg_rating;
+                        // Check both normalized meal name and original meal slug
+                        const normalizedMealKey = `${diningHall}_${meal}`;
+                        let mealRatingData = ratings.meals[normalizedMealKey];
+                        
+                        // If not found, try with original meal slug from first station's first item
+                        if (!mealRatingData && data[diningHall][meal]) {
+                            const firstStation = Object.keys(data[diningHall][meal])[0];
+                            const firstStationItems = data[diningHall][meal][firstStation];
+                            if (firstStationItems && firstStationItems.length > 0) {
+                                const originalMealSlug = firstStationItems[0].meal;
+                                const originalMealKey = `${diningHall}_${originalMealSlug}`;
+                                mealRatingData = ratings.meals[originalMealKey];
+                            }
+                        }
+                        
+                        if (mealRatingData) {
+                            const avgRating = mealRatingData.avg_rating;
                             const starRating = renderStars(avgRating, null, false);
                             starRating.classList.add('meal-star-rating');
                             mealTitle.appendChild(starRating);
@@ -630,7 +645,7 @@ document.addEventListener("DOMContentLoaded", function() {
             console.log(`Updating aggregates for: ${station} in ${diningHall} ${mealTitle} with rating ${newRating}`);
             
             // Update station aggregate
-            updateStationRating(diningHall, station);
+            updateStationRating(diningHall, station, mealTitle);
             
             // Update meal aggregate  
             updateMealRating(diningHall, mealTitle);
@@ -694,17 +709,25 @@ document.addEventListener("DOMContentLoaded", function() {
         return count > 0 ? total / count : 0;
     }
 
-    function updateStationRating(diningHall, station) {
-        // Find all food items in this station
+    function updateStationRating(diningHall, station, specificMealPeriod) {
+        // Find all food items in this SPECIFIC station within the SPECIFIC meal period
         const stationItems = [];
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
             if (hallTitle && hallTitle.textContent.trim() === diningHall) {
-                hall.querySelectorAll('.station').forEach(st => {
-                    const stTitle = st.querySelector('h4');
-                    if (stTitle && stTitle.textContent.trim() === station) {
-                        st.querySelectorAll('li[data-food-id]').forEach(li => {
-                            stationItems.push(li);
+                hall.querySelectorAll('.meal').forEach(meal => {
+                    const mealTitle = meal.querySelector('h3');
+                    const mealName = mealTitle ? mealTitle.textContent.trim().toLowerCase() : '';
+                    
+                    // Only look in the specific meal period
+                    if (mealName === specificMealPeriod) {
+                        meal.querySelectorAll('.station').forEach(st => {
+                            const stTitle = st.querySelector('h4');
+                            if (stTitle && stTitle.textContent.trim() === station) {
+                                st.querySelectorAll('li[data-food-id]').forEach(li => {
+                                    stationItems.push(li);
+                                });
+                            }
                         });
                     }
                 });
@@ -713,28 +736,36 @@ document.addEventListener("DOMContentLoaded", function() {
         
         const avg = calculateAverageForItems(stationItems);
         
-        // Update station header rating display
+        // Update ONLY the station header in the specific meal period
         document.querySelectorAll('.dining-hall').forEach(hall => {
             const hallTitle = hall.querySelector('h2');
             if (hallTitle && hallTitle.textContent.trim() === diningHall) {
-                hall.querySelectorAll('.station').forEach(st => {
-                    const stTitle = st.querySelector('h4');
-                    if (stTitle && stTitle.textContent.trim() === station) {
-                        // Remove existing rating display
-                        const existing = stTitle.querySelector('.star-rating-container');
-                        if (existing) existing.remove();
-                        
-                        // Add new rating display if we have ratings
-                        if (avg > 0) {
-                            const ratingDisplay = renderStars(avg, null, false);
-                            stTitle.appendChild(ratingDisplay);
-                        }
+                hall.querySelectorAll('.meal').forEach(meal => {
+                    const mealTitle = meal.querySelector('h3');
+                    const mealName = mealTitle ? mealTitle.textContent.trim().toLowerCase() : '';
+                    
+                    // Only update in the specific meal period
+                    if (mealName === specificMealPeriod) {
+                        meal.querySelectorAll('.station').forEach(st => {
+                            const stTitle = st.querySelector('h4');
+                            if (stTitle && stTitle.textContent.trim() === station) {
+                                // Remove existing rating display
+                                const existing = stTitle.querySelector('.star-rating-container');
+                                if (existing) existing.remove();
+                                
+                                // Add new rating display if we have ratings
+                                if (avg > 0) {
+                                    const ratingDisplay = renderStars(avg, null, false);
+                                    stTitle.appendChild(ratingDisplay);
+                                }
+                            }
+                        });
                     }
                 });
             }
         });
         
-        console.log(`Updated station ${station} rating to ${avg.toFixed(2)}`);
+        console.log(`Updated station ${station} in ${diningHall} ${specificMealPeriod} rating to ${avg.toFixed(2)}`);
     }
 
     function updateMealRating(diningHall, mealTitle) {
