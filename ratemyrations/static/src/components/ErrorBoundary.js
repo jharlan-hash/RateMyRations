@@ -27,7 +27,7 @@ class ErrorBoundary extends BaseComponent {
   
   getTemplate() {
     if (!this.hasError) {
-      return `<slot></slot>`;
+      return this.innerHTML; // Preserve the original content
     }
     
     return `

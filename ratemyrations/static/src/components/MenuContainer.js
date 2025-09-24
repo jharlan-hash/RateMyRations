@@ -9,11 +9,17 @@ import { getCurrentMeal } from '../utils/helpers.js';
 class MenuContainer extends BaseComponent {
   constructor() {
     super();
+    console.log('🏗️ MenuContainer constructor called');
     this.menus = {};
     this.ratings = {};
     this.userRatings = {};
     this.expandedSections = new Set();
     this.currentDate = new Date().toISOString().split('T')[0];
+  }
+  
+  connectedCallback() {
+    console.log('🔌 MenuContainer connected to DOM');
+    super.connectedCallback();
   }
   
   static get observedAttributes() {
@@ -58,6 +64,10 @@ class MenuContainer extends BaseComponent {
       
       if (!hasMenus) return '';
       
+      const hallExpanded = this.expandedSections.has(diningHall);
+      const hallContentClass = `dining-hall-content ${hallExpanded ? 'expanded' : 'collapsed'}`;
+      const hallInline = hallExpanded ? 'style="display:block;max-height:100vh;overflow-y:auto;"' : 'style="display:none;max-height:0;overflow:hidden;"';
+
       return `
         <div class="dining-hall-section" data-dining-hall="${diningHall}">
           <div class="dining-hall-header" data-section="${diningHall}">
@@ -65,11 +75,11 @@ class MenuContainer extends BaseComponent {
             <div class="dining-hall-rating">
               ${this.generateDiningHallRating(diningHall)}
             </div>
-            <button class="expand-btn" aria-expanded="false">
-              <span class="expand-icon">▼</span>
+            <button class="expand-btn" aria-expanded="${hallExpanded}">
+              <span class="expand-icon">${hallExpanded ? '▲' : '▼'}</span>
             </button>
           </div>
-          <div class="dining-hall-content">
+          <div class="${hallContentClass}" ${hallInline}>
             ${this.generateMealSections(diningHall, hallMenus)}
           </div>
         </div>
@@ -85,6 +95,8 @@ class MenuContainer extends BaseComponent {
       if (!mealData || Object.keys(mealData).length === 0) return '';
       
       const isExpanded = this.expandedSections.has(`${diningHall}-${meal}`);
+      const mealInline = isExpanded ? 'style="display:block;max-height:100vh;overflow-y:auto;"' : 'style="display:none;max-height:0;overflow:hidden;"';
+      
       const mealRating = this.calculateMealRating(diningHall, meal, mealData);
       
       return `
@@ -98,7 +110,7 @@ class MenuContainer extends BaseComponent {
               <span class="expand-icon">${isExpanded ? '▲' : '▼'}</span>
             </button>
           </div>
-          <div class="meal-content ${isExpanded ? 'expanded' : 'collapsed'}">
+          <div class="meal-content ${isExpanded ? 'expanded' : 'collapsed'}" ${mealInline}>
             ${this.generateStationSections(diningHall, meal, mealData)}
           </div>
         </div>
@@ -110,20 +122,23 @@ class MenuContainer extends BaseComponent {
     return Object.entries(mealData).map(([station, foods]) => {
       if (!foods || foods.length === 0) return '';
       
+      const stationId = `${diningHall}-${meal}-${station}`;
+      const isExpanded = this.expandedSections.has(stationId);
+      const stationInline = isExpanded ? 'style="display:block;max-height:100vh;overflow-y:auto;"' : 'style="display:none;max-height:0;overflow:hidden;"';
       const stationRating = this.calculateStationRating(diningHall, meal, station, foods);
       
       return `
         <div class="station-section" data-station="${station}">
-          <div class="station-header" data-section="${diningHall}-${meal}-${station}">
+          <div class="station-header" data-section="${stationId}">
             <h4 class="station-title">${station}</h4>
             <div class="station-rating">
               ${this.generateStationRating(stationRating)}
             </div>
-            <button class="expand-btn" aria-expanded="false">
-              <span class="expand-icon">▼</span>
+            <button class="expand-btn" aria-expanded="${isExpanded}">
+              <span class="expand-icon">${isExpanded ? '▲' : '▼'}</span>
             </button>
           </div>
-          <div class="station-content">
+          <div class="station-content ${isExpanded ? 'expanded' : 'collapsed'}" ${stationInline}>
             <ul class="food-list">
               ${foods.map(food => this.generateFoodItem(food)).join('')}
             </ul>
@@ -254,6 +269,8 @@ class MenuContainer extends BaseComponent {
   }
   
   attachEventListeners() {
+    console.log('🔗 Attaching event listeners to MenuContainer');
+    
     // Handle section expansion
     this.addEventListener('click', this.handleSectionClick.bind(this));
     
@@ -262,17 +279,34 @@ class MenuContainer extends BaseComponent {
     if (refreshBtn) {
       refreshBtn.addEventListener('click', this.handleRefresh.bind(this));
     }
+    
+    // Debug: Check if expand buttons exist
+    const expandBtns = this.querySelectorAll('.expand-btn');
+    console.log(`🔍 Found ${expandBtns.length} expand buttons`);
   }
   
   handleSectionClick(event) {
+    console.log('🖱️ Click event received:', event.target);
+    
     const expandBtn = event.target.closest('.expand-btn');
-    if (!expandBtn) return;
+    if (!expandBtn) {
+      console.log('❌ Click not on expand button');
+      return;
+    }
+    
+    console.log('✅ Click on expand button:', expandBtn);
     
     const section = expandBtn.closest('[data-section]');
-    if (!section) return;
+    if (!section) {
+      console.log('❌ No section found');
+      return;
+    }
     
     const sectionId = section.dataset.section;
+    console.log('📂 Section ID:', sectionId);
+    
     const isExpanded = this.expandedSections.has(sectionId);
+    console.log('📊 Currently expanded:', isExpanded);
     
     if (isExpanded) {
       this.expandedSections.delete(sectionId);
@@ -283,7 +317,8 @@ class MenuContainer extends BaseComponent {
     }
     
     this.updateExpandedState(sectionId, !isExpanded);
-    this.state.setState({ expandedSections: this.expandedSections });
+    // Push a new Set instance to trigger state change listeners
+    this.state.setState({ expandedSections: new Set(this.expandedSections) });
   }
   
   closeSiblingSections(sectionId) {
@@ -305,24 +340,59 @@ class MenuContainer extends BaseComponent {
   }
   
   updateExpandedState(sectionId, isExpanded) {
+    console.log(`🔄 Updating expanded state for ${sectionId}: ${isExpanded}`);
+    
     const section = this.querySelector(`[data-section="${sectionId}"]`);
-    if (!section) return;
+    if (!section) {
+      console.log(`❌ Section not found: ${sectionId}`);
+      return;
+    }
+    
+    console.log(`✅ Section found:`, section);
     
     const expandBtn = section.querySelector('.expand-btn');
     const content = section.nextElementSibling;
-    const icon = expandBtn.querySelector('.expand-icon');
+    const icon = expandBtn ? expandBtn.querySelector('.expand-icon') : null;
+    
+    console.log(`🔘 Expand button:`, expandBtn);
+    console.log(`📦 Content element:`, content);
+    console.log(`🎯 Icon element:`, icon);
     
     if (expandBtn) {
       expandBtn.setAttribute('aria-expanded', isExpanded);
+      console.log(`✅ Set aria-expanded to ${isExpanded}`);
     }
     
     if (content) {
+      // Apply classes for CSS consumers
       content.classList.toggle('expanded', isExpanded);
       content.classList.toggle('collapsed', !isExpanded);
+
+      // Apply inline styles to guarantee visibility regardless of CSS
+      if (isExpanded) {
+        content.style.display = 'block';
+        content.style.maxHeight = content.scrollHeight + 'px';
+        content.style.overflowY = 'auto';
+      } else {
+        content.style.maxHeight = '0px';
+        content.style.overflow = 'hidden';
+        // delay hiding to allow any transition; if no transition, it's immediate
+        setTimeout(() => {
+          if (content.classList.contains('collapsed')) {
+            content.style.display = 'none';
+          }
+        }, 150);
+      }
+      console.log(`✅ Updated content inline styles. Expanded: ${isExpanded}`);
+    } else {
+      console.log(`❌ No content element found to expand`);
     }
     
     if (icon) {
       icon.textContent = isExpanded ? '▲' : '▼';
+      console.log(`✅ Updated icon to ${isExpanded ? '▲' : '▼'}`);
+    } else {
+      console.log('❌ No icon element found on expand button');
     }
   }
   

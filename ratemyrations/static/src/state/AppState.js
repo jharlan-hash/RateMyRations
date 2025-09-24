@@ -72,9 +72,14 @@ class AppState {
     
     // Notify listeners of changes
     Object.keys(updates).forEach(key => {
-      if (oldState[key] !== this.state[key]) {
+      const oldVal = oldState[key];
+      const newVal = this.state[key];
+      const changed = (oldVal instanceof Set && newVal instanceof Set)
+        ? (oldVal.size !== newVal.size || [...oldVal].some(v => !newVal.has(v)))
+        : (oldVal !== newVal);
+      if (changed) {
         const callbacks = this.listeners.get(key) || [];
-        callbacks.forEach(callback => callback(this.state[key], oldState[key]));
+        callbacks.forEach(callback => callback(newVal, oldVal));
       }
     });
     

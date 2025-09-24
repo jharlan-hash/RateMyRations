@@ -7,9 +7,15 @@ import BaseComponent from './BaseComponent.js';
 class LoadingSpinner extends BaseComponent {
   constructor() {
     super();
+    console.log('🌀 LoadingSpinner constructor called');
     this.message = 'Loading...';
     this.size = 'medium';
     this.overlay = false;
+  }
+  
+  connectedCallback() {
+    console.log('🔌 LoadingSpinner connected to DOM');
+    super.connectedCallback();
   }
   
   static get observedAttributes() {

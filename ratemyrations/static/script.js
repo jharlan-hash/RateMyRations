@@ -81,6 +81,33 @@ document.addEventListener("DOMContentLoaded", function() {
             const starRating = document.getElementById("star-rating-template").content.cloneNode(true);
             const stars = starRating.querySelectorAll(".star");
 
+            const applyVisual = (val) => {
+                stars.forEach(s => {
+                    // Clean up any legacy classes
+                    s.classList.remove("active");
+                    const sVal = parseInt(s.dataset.value, 10);
+                    if (sVal <= val) {
+                        s.classList.add("rated");
+                        s.classList.add("user-rated");
+                    } else {
+                        s.classList.remove("rated");
+                        s.classList.remove("user-rated");
+                    }
+                });
+                // Update userRatings IMMEDIATELY for instant calculations
+                if (val === 0) {
+                    delete userRatings[foodId];
+                } else {
+                    userRatings[foodId] = val;
+                }
+                
+                // Update community rating for this item immediately
+                updateCommunityRatingDisplay(starRatingContainer, val);
+                
+                // Update aggregates live - MUST WORK
+                updateLiveAggregates(starRatingContainer, val);
+            };
+
             stars.forEach(star => {
                 if (star.dataset.value <= rating) {
                     star.classList.add("rated");
@@ -91,24 +118,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 star.addEventListener("click", (event) => {
                     event.stopPropagation();
-                    let newRating = parseInt(star.dataset.value);
-                    if (star.classList.contains("user-rated") && newRating == userRatings[foodId]) {
-                        newRating = 0;
-                    }
+                    const selected = parseInt(star.dataset.value, 10);
+                    const current = userRatings[foodId] ? parseInt(userRatings[foodId], 10) : 0;
+                    let newRating = (selected === current) ? 0 : selected;
 
-                    // Update visual state immediately
-                    stars.forEach((s, index) => {
-                        if (index < newRating) {
-                            s.classList.add("active");
-                        } else {
-                            s.classList.remove("active");
-                        }
-                    });
-
-                    const openTabs = new Set();
-                    document.querySelectorAll(".active").forEach(tab => {
-                        openTabs.add(tab.id);
-                    });
+                    // Update visual state immediately using rated/user-rated classes
+                    applyVisual(newRating);
 
                     if (star.dataset._debouncing) return;
                     star.dataset._debouncing = "1";
@@ -126,15 +141,19 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         return response.json();
                     }).then(() => {
+                        // Update userRatings immediately BEFORE any calculations
                         if (newRating === 0) {
                             delete userRatings[foodId];
                         } else {
                             userRatings[foodId] = newRating;
                         }
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
-                        
                         console.log('Rating updated successfully');
-                        // No need to call updateRatingInUI - the visual state is already set by the click handler
+                        
+                        // Update aggregates again now that userRatings is properly set
+                        updateLiveAggregates(starRatingContainer, newRating);
+                        
+                        // NO background fetch - it overwrites our community display
                     }).catch(error => {
                         console.error('Error updating rating:', error);
                         
@@ -146,14 +165,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
                         
                         // Revert the star selection to previous state
-                        const previousRating = userRatings[foodId] || 0;
-                        stars.forEach((s, index) => {
-                            if (index < previousRating) {
-                                s.classList.add("active");
-                            } else {
-                                s.classList.remove("active");
-                            }
-                        });
+                        applyVisual(current);
                     }).finally(() => {
                         delete star.dataset._debouncing;
                     });
@@ -415,6 +427,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                 items.forEach(item => {
                                     const listItem = document.createElement("li");
                                     listItem.setAttribute('data-food-id', item.id);
+                                    listItem.setAttribute('data-meal-slug', item.meal);
 
                                     const foodItemContainer = document.createElement('div');
                                     foodItemContainer.classList.add('food-item-container');
@@ -522,6 +535,9 @@ document.addEventListener("DOMContentLoaded", function() {
                     // Store data attributes for event delegation
                     diningHallTitle.dataset.diningHallId = diningHallId;
                 }
+
+                // After building the menu, apply aggregates based on current ratings
+                try { updateAllAggregatesFromRatings(); } catch (e) { console.warn('Aggregate update failed:', e); }
             })
             .catch(error => {
                 console.error('Error fetching menus:', error);
@@ -595,6 +611,363 @@ document.addEventListener("DOMContentLoaded", function() {
                     row.appendChild(hist);
                 }
             }
+        });
+    }
+
+    function updateLiveAggregates(starContainer, newRating) {
+        try {
+            const li = starContainer.closest('li[data-food-id]');
+            if (!li) {
+                console.warn('Could not find food item li');
+                return;
+            }
+            
+            const station = li.closest('.station').querySelector('h4').textContent.trim();
+            const diningHall = li.closest('.dining-hall').querySelector('h2').textContent.trim();
+            const mealElement = li.closest('.meal');
+            const mealTitle = mealElement.querySelector('h3').textContent.trim().toLowerCase();
+            
+            console.log(`Updating aggregates for: ${station} in ${diningHall} ${mealTitle} with rating ${newRating}`);
+            
+            // Update station aggregate
+            updateStationRating(diningHall, station);
+            
+            // Update meal aggregate  
+            updateMealRating(diningHall, mealTitle);
+            
+            // Update dining hall aggregate
+            updateDiningHallRating(diningHall);
+            
+        } catch (e) {
+            console.error('Failed to update live aggregates:', e);
+        }
+    }
+
+    function updateCommunityRatingDisplay(starContainer, newRating) {
+        try {
+            const li = starContainer.closest('li[data-food-id]');
+            if (!li) return;
+            
+            const communityRow = li.querySelector('.community-rating-row');
+            if (!communityRow) return;
+            
+            const starsInner = communityRow.querySelector('.stars-inner');
+            const ratingValue = communityRow.querySelector('.rating-value');
+            const countSpan = communityRow.querySelector('.rating-count');
+            
+            if (starsInner) {
+                const percentage = (newRating / 5) * 100;
+                starsInner.style.width = `${percentage}%`;
+            }
+            
+            if (ratingValue) {
+                ratingValue.textContent = `(${newRating.toFixed(2)})`;
+            }
+            
+            if (countSpan) {
+                countSpan.textContent = ` 1`; // Show as first rating
+            }
+            
+        } catch (e) {
+            console.warn('Failed to update community rating display:', e);
+        }
+    }
+
+    function calculateAverageForItems(items) {
+        let total = 0;
+        let count = 0;
+        
+        items.forEach(li => {
+            const foodId = parseInt(li.getAttribute('data-food-id'), 10);
+            
+            // Get rating from userRatings (most reliable source)
+            const rating = userRatings[foodId] ? parseInt(userRatings[foodId], 10) : 0;
+            
+            if (rating > 0) {
+                total += rating;
+                count++;
+                console.log(`Found rating ${rating} for food ${foodId}`);
+            }
+        });
+        
+        console.log(`Calculated average: ${total}/${count} = ${count > 0 ? total / count : 0}`);
+        return count > 0 ? total / count : 0;
+    }
+
+    function updateStationRating(diningHall, station) {
+        // Find all food items in this station
+        const stationItems = [];
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+                hall.querySelectorAll('.station').forEach(st => {
+                    const stTitle = st.querySelector('h4');
+                    if (stTitle && stTitle.textContent.trim() === station) {
+                        st.querySelectorAll('li[data-food-id]').forEach(li => {
+                            stationItems.push(li);
+                        });
+                    }
+                });
+            }
+        });
+        
+        const avg = calculateAverageForItems(stationItems);
+        
+        // Update station header rating display
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+                hall.querySelectorAll('.station').forEach(st => {
+                    const stTitle = st.querySelector('h4');
+                    if (stTitle && stTitle.textContent.trim() === station) {
+                        // Remove existing rating display
+                        const existing = stTitle.querySelector('.star-rating-container');
+                        if (existing) existing.remove();
+                        
+                        // Add new rating display if we have ratings
+                        if (avg > 0) {
+                            const ratingDisplay = renderStars(avg, null, false);
+                            stTitle.appendChild(ratingDisplay);
+                        }
+                    }
+                });
+            }
+        });
+        
+        console.log(`Updated station ${station} rating to ${avg.toFixed(2)}`);
+    }
+
+    function updateMealRating(diningHall, mealTitle) {
+        // Find all food items in this meal
+        const mealItems = [];
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+                hall.querySelectorAll('.meal').forEach(meal => {
+                    const mTitle = meal.querySelector('h3');
+                    if (mTitle && mTitle.textContent.trim().toLowerCase() === mealTitle) {
+                        meal.querySelectorAll('li[data-food-id]').forEach(li => {
+                            mealItems.push(li);
+                        });
+                    }
+                });
+            }
+        });
+        
+        const avg = calculateAverageForItems(mealItems);
+        
+        // Update meal header rating display
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+                hall.querySelectorAll('.meal').forEach(meal => {
+                    const mTitle = meal.querySelector('h3');
+                    if (mTitle && mTitle.textContent.trim().toLowerCase() === mealTitle) {
+                        // Remove existing rating display
+                        const existing = mTitle.querySelector('.star-rating-container');
+                        if (existing) existing.remove();
+                        
+                        // Add new rating display if we have ratings
+                        if (avg > 0) {
+                            const ratingDisplay = renderStars(avg, null, false);
+                            ratingDisplay.classList.add('meal-star-rating');
+                            mTitle.appendChild(ratingDisplay);
+                        }
+                    }
+                });
+            }
+        });
+        
+        console.log(`Updated meal ${mealTitle} rating to ${avg.toFixed(2)}`);
+    }
+
+    function updateDiningHallRating(diningHall) {
+        // Find all food items in this dining hall
+        const hallItems = [];
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+                hall.querySelectorAll('li[data-food-id]').forEach(li => {
+                    hallItems.push(li);
+                });
+            }
+        });
+        
+        const avg = calculateAverageForItems(hallItems);
+        
+        // Update dining hall header rating display
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (hallTitle && hallTitle.textContent.trim() === diningHall) {
+                // Remove existing rating display
+                const existing = hallTitle.querySelector('.star-rating-container');
+                if (existing) existing.remove();
+                
+                // Add new rating display if we have ratings
+                if (avg > 0) {
+                    const ratingDisplay = renderStars(avg, null, false);
+                    hallTitle.appendChild(ratingDisplay);
+                }
+            }
+        });
+        
+        console.log(`Updated dining hall ${diningHall} rating to ${avg.toFixed(2)}`);
+    }
+
+    function updateAllAggregatesFromRatings() {
+        console.log('updateAllAggregatesFromRatings called - now using direct updates');
+        // This function is replaced by direct live updates in updateLiveAggregates
+        // Just do nothing to avoid errors
+    }
+
+    function applyHallAverageDirect(diningHall, average) {
+        let applied = false;
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const title = hall.querySelector('h2');
+            if (!title) return;
+            const name = (title.firstChild ? title.firstChild.textContent : title.textContent).trim();
+            if (name !== diningHall) return;
+            let container = title.querySelector('.star-rating-container');
+            if (!container) {
+                title.appendChild(renderStars(average, null, false));
+                container = title.querySelector('.star-rating-container');
+            }
+            applyAggregateToStars(container, average);
+            applied = true;
+        });
+        return applied;
+    }
+
+    function applyMealAverageDirect(diningHall, mealSlug, average) {
+        const mealBase = mealSlug.includes('breakfast') ? 'breakfast' : mealSlug.includes('lunch') ? 'lunch' : 'dinner';
+        const mealContent = document.getElementById(`meal-content-${diningHall}-${mealBase}`);
+        if (!mealContent) return false;
+        const mealDiv = mealContent.closest('.meal');
+        const title = mealDiv ? mealDiv.querySelector('h3') : null;
+        if (!title) return false;
+        let container = title.parentElement.querySelector('.meal-star-rating .star-rating-container')
+          || title.parentElement.querySelector('.star-rating-container');
+        if (!container) {
+            const appended = renderStars(average, null, false);
+            appended.classList.add('meal-star-rating');
+            title.parentElement.appendChild(appended);
+            container = appended;
+        }
+        applyAggregateToStars(container, average);
+        return true;
+    }
+
+    function applyStationAverageDirect(diningHall, station, average) {
+        let applied = false;
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (!hallTitle) return;
+            const name = (hallTitle.firstChild ? hallTitle.firstChild.textContent : hallTitle.textContent).trim();
+            if (name !== diningHall) return;
+            hall.querySelectorAll('.station').forEach(st => {
+                const title = st.querySelector('h4');
+                if (title && title.textContent.trim() === station) {
+                    let container = st.querySelector('.station-rating .star-rating-container');
+                    if (!container) {
+                        const wrapper = st.querySelector('.station-rating');
+                        if (wrapper) {
+                            wrapper.innerHTML = '';
+                            wrapper.appendChild(renderStars(average, null, false));
+                            container = wrapper.querySelector('.star-rating-container');
+                        }
+                    }
+                    applyAggregateToStars(container, average);
+                    applied = true;
+                }
+            });
+        });
+        return applied;
+    }
+
+    function applyAggregateToStars(containerEl, average) {
+        if (!containerEl) return;
+        const starsInner = containerEl.querySelector('.stars-inner');
+        const ratingValue = containerEl.querySelector('.rating-value');
+        const safe = isFinite(average) && !isNaN(average) ? average : 0;
+        if (starsInner) starsInner.style.width = `${(safe / 5) * 100}%`;
+        if (ratingValue) ratingValue.textContent = `(${safe.toFixed(2)})`;
+    }
+
+    function updateStationAggregate(diningHall, station) {
+        const aggregates = computeVisibleAggregates();
+        const key = `${station}_${diningHall}`;
+        const agg = aggregates.stations[key];
+        if (!agg || agg.count === 0) return;
+        const avg = agg.total / agg.count;
+
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const hallTitle = hall.querySelector('h2');
+            if (!hallTitle) return;
+            const name = (hallTitle.firstChild ? hallTitle.firstChild.textContent : hallTitle.textContent).trim();
+            if (name !== diningHall) return;
+
+            hall.querySelectorAll('.station').forEach(st => {
+                const title = st.querySelector('h4');
+                if (title && title.textContent.trim() === station) {
+                    let container = st.querySelector('.station-rating .star-rating-container');
+                    if (!container) {
+                        const wrapper = st.querySelector('.station-rating');
+                        if (wrapper) {
+                            wrapper.innerHTML = '';
+                            wrapper.appendChild(renderStars(avg, null, false));
+                            container = wrapper.querySelector('.star-rating-container');
+                        }
+                    }
+                    applyAggregateToStars(container, avg);
+                }
+            });
+        });
+    }
+
+    function updateMealAggregate(diningHall, mealSlug) {
+        const aggregates = computeVisibleAggregates();
+        const key = `${diningHall}_${mealSlug}`;
+        const agg = aggregates.meals[key];
+        if (!agg || agg.count === 0) return;
+        const avg = agg.total / agg.count;
+
+        const mealBase = mealSlug.includes('breakfast') ? 'breakfast' : mealSlug.includes('lunch') ? 'lunch' : 'dinner';
+        const mealContent = document.getElementById(`meal-content-${diningHall}-${mealBase}`);
+        if (mealContent) {
+            const mealDiv = mealContent.closest('.meal');
+            const title = mealDiv ? mealDiv.querySelector('h3') : null;
+            if (title) {
+                let container = title.parentElement.querySelector('.meal-star-rating .star-rating-container')
+                  || title.parentElement.querySelector('.star-rating-container');
+                if (!container) {
+                    // Create if missing
+                    const appended = renderStars(avg, null, false);
+                    appended.classList.add('meal-star-rating');
+                    title.parentElement.appendChild(appended);
+                    container = appended;
+                }
+                applyAggregateToStars(container, avg);
+            }
+        }
+    }
+
+    function updateDiningHallAggregate(diningHall) {
+        const aggregates = computeVisibleAggregates();
+        const agg = aggregates.halls[diningHall];
+        if (!agg || agg.count === 0) return;
+        const avg = agg.total / agg.count;
+        // Find dining hall title
+        document.querySelectorAll('.dining-hall').forEach(hall => {
+            const title = hall.querySelector('h2');
+            if (!title) return;
+            const name = (title.firstChild ? title.firstChild.textContent : title.textContent).trim();
+            if (name !== diningHall) return;
+            let container = title.querySelector('.star-rating-container');
+            if (!container) {
+                title.appendChild(renderStars(avg, null, false));
+                container = title.querySelector('.star-rating-container');
+            }
+            applyAggregateToStars(container, avg);
         });
     }
 

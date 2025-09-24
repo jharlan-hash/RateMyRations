@@ -5,6 +5,22 @@
 
 set -e
 
+# Bars-only mode (default). Set PROGRESS_ONLY=0 or pass --verbose to see full output
+PROGRESS_ONLY=${PROGRESS_ONLY:0}
+
+# Allow aliasing in this script
+shopt -s expand_aliases
+
+# Quiet echo wrapper: suppresses echo output when in bars-only mode
+quiet_echo() {
+    if [ "$PROGRESS_ONLY" = "1" ]; then
+        return 0
+    else
+        builtin echo -e "$@"
+    fi
+}
+alias echo='quiet_echo'
+
 # Colors and formatting
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,6 +46,9 @@ INFO='ℹ️'
 print_color() {
     local color=$1
     local text=$2
+    if [ "$PROGRESS_ONLY" = "1" ]; then
+        return 0
+    fi
     echo -e "${color}${text}${NC}"
 }
 
@@ -51,7 +70,9 @@ show_progress() {
     local message=$1
     local duration=${2:-2}
     
-    print_color $YELLOW "$INFO $message"
+    if [ "$PROGRESS_ONLY" != "1" ]; then
+        print_color $YELLOW "$INFO $message"
+    fi
     
     # Create a simple progress bar
     for i in {1..20}; do
@@ -103,7 +124,7 @@ show_startup_steps() {
 # Main startup sequence
 main() {
     # Clear screen and show banner
-    clear
+    if [ "$PROGRESS_ONLY" != "1" ]; then clear; fi
     print_banner
     show_system_info
     show_startup_steps
@@ -111,7 +132,7 @@ main() {
     # Step 1: Initialize database
     print_color $BLUE "$GEAR Step 1: Initializing database tables..."
     show_progress "Creating database tables" 1
-    if python3 ratemyrations/database.py; then
+    if python3 ratemyrations/database.py > /dev/null 2>&1; then
         print_color $GREEN "$CHECK Database initialized successfully"
     else
         print_color $RED "$CROSS Database initialization failed"
@@ -128,7 +149,7 @@ main() {
     export ADMIN_TOKEN=mega_gooner
     
     # Start Gunicorn in background
-    gunicorn -w 4 -b 0.0.0.0:8000 ratemyrations.wsgi:application &
+    gunicorn -w 4 -b 0.0.0.0:8000 ratemyrations.wsgi:application >/dev/null 2>&1 &
     GUNICORN_PID=$!
     
     print_color $GREEN "$CHECK Gunicorn started (PID: $GUNICORN_PID)"
@@ -159,7 +180,7 @@ main() {
     print_color $BLUE "$GEAR Step 4: Warming application cache..."
     show_progress "Pre-loading menu data for all workers" 2
     
-    if python3 warm_cache.py http://localhost:8000; then
+    if python3 warm_cache.py http://localhost:8000 > /dev/null 2>&1; then
         print_color $GREEN "$CHECK Cache warmed successfully"
     else
         print_color $YELLOW "$WARNING Cache warming failed, but server is still running"

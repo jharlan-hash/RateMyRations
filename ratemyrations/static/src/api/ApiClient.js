@@ -22,15 +22,19 @@ class ApiClient {
     };
     
     try {
+      console.log(`🌐 API Request: ${this.baseURL}${url}`);
       const response = await fetch(`${this.baseURL}${url}`, config);
       
       if (!response.ok) {
+        console.error(`❌ API Error: ${response.status} ${response.statusText}`);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log(`✅ API Success: ${url}`, data);
+      return data;
     } catch (error) {
-      console.error(`API request failed: ${url}`, error);
+      console.error(`❌ API request failed: ${url}`, error);
       throw error;
     }
   }

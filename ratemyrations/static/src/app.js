@@ -105,26 +105,33 @@ class RateMyRationsApp {
   initializeComponentInstances() {
     console.log('🔧 Initializing component instances...');
     
-    // Initialize all components
-    const components = [
-      'menu-container',
-      'date-picker', 
-      'loading-spinner',
-      'error-boundary',
-      'admin-console'
-    ];
-    
-    components.forEach(componentName => {
-      const element = document.querySelector(componentName);
-      if (element) {
-        console.log(`✅ Initialized ${componentName}`);
-      } else {
-        console.warn(`⚠️ Component ${componentName} not found in DOM`);
-      }
-    });
-    
-    // Set up admin toggle
-    this.setupAdminToggle();
+    // Wait for custom elements to be fully upgraded
+    setTimeout(() => {
+      // Initialize all components
+      const components = [
+        'menu-container',
+        'date-picker', 
+        'loading-spinner',
+        'error-boundary',
+        'admin-console'
+      ];
+      
+      console.log('🔍 DOM Debug Info:');
+      console.log('All elements:', document.querySelectorAll('*'));
+      console.log('Custom elements:', document.querySelectorAll('menu-container, date-picker, loading-spinner, error-boundary, admin-console'));
+      
+      components.forEach(componentName => {
+        const element = document.querySelector(componentName);
+        if (element) {
+          console.log(`✅ Initialized ${componentName}`, element);
+        } else {
+          console.warn(`⚠️ Component ${componentName} not found in DOM`);
+        }
+      });
+      
+      // Set up admin toggle
+      this.setupAdminToggle();
+    }, 100); // Small delay to ensure custom elements are upgraded
   }
   
   /**
@@ -158,6 +165,23 @@ class RateMyRationsApp {
     // Listen for custom events
     document.addEventListener(EVENTS.RATING_CHANGED, this.handleRatingChanged.bind(this));
     document.addEventListener(EVENTS.ERROR_OCCURRED, this.handleError.bind(this));
+
+    // React to date changes from state
+    this.state.subscribe('currentDate', (newDate, oldDate) => {
+      if (newDate && newDate !== oldDate) {
+        this.loadDataForDate(newDate).catch((e) => {
+          console.error('Failed loading data for new date:', e);
+        });
+      }
+    });
+
+    // Handle refresh requests from components (e.g., MenuContainer)
+    document.addEventListener('refresh-menus', (event) => {
+      const date = event?.detail?.date || this.state.getState('currentDate');
+      this.loadDataForDate(date, true).catch((e) => {
+        console.error('Failed refreshing menus:', e);
+      });
+    });
   }
   
   /**
@@ -173,8 +197,10 @@ class RateMyRationsApp {
         this.api.fetchMenus(this.state.getState('currentDate'))
       ]);
       
+      const ratingsById = this.buildRatingsIndex(menus, ratings);
+      
       this.state.setState({
-        ratings,
+        ratings: ratingsById,
         menus,
         loading: false
       });
@@ -188,6 +214,62 @@ class RateMyRationsApp {
         error: 'Failed to load menu data'
       });
     }
+  }
+
+  /**
+   * Load data for a specific date
+   * @param {string} date
+   * @param {boolean} refresh
+   */
+  async loadDataForDate(date, refresh = false) {
+    try {
+      this.state.setState({ loading: true });
+      const [ratings, menus] = await Promise.all([
+        this.api.fetchRatings(date),
+        this.api.fetchMenus(date, refresh)
+      ]);
+      const ratingsById = this.buildRatingsIndex(menus, ratings);
+      this.state.setState({ ratings: ratingsById, menus, loading: false });
+    } catch (error) {
+      console.error('Failed to load data for date:', date, error);
+      this.state.setState({ loading: false, error: 'Failed to load menu data' });
+    }
+  }
+
+  /**
+   * Build an ID-keyed ratings index from backend aggregates
+   * @param {Object} menus
+   * @param {Object} ratingsResponse
+   * @returns {Object} ratingsById { [foodId]: { average, count, dist? } }
+   */
+  buildRatingsIndex(menus, ratingsResponse) {
+    const ratingsByKey = (ratingsResponse && ratingsResponse.foods) || {};
+    const index = {};
+    if (!menus || typeof menus !== 'object') return index;
+    
+    Object.keys(menus).forEach((diningHall) => {
+      const hall = menus[diningHall] || {};
+      Object.keys(hall).forEach((meal) => {
+        const mealStations = hall[meal] || {};
+        Object.keys(mealStations).forEach((station) => {
+          const items = mealStations[station] || [];
+          items.forEach((item) => {
+            // item.meal is the original meal slug from backend (e.g., dinner-3)
+            const originalMealSlug = item.meal;
+            const key = `${item.name}_${station}_${diningHall}_${originalMealSlug}`;
+            const agg = ratingsByKey[key];
+            if (agg) {
+              index[item.id] = {
+                average: agg.avg_rating,
+                count: agg.rating_count,
+                dist: agg.dist || null,
+              };
+            }
+          });
+        });
+      });
+    });
+    return index;
   }
   
   /**

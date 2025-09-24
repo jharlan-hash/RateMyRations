@@ -46,7 +46,7 @@ curl http://localhost:8000/
 #### `GET /about`
 **Description**: About page with application information  
 **Response**: HTML page  
-**Example**:
+**Example**:pip install pytest-cov pytest-html selenium
 ```bash
 curl http://localhost:8000/about
 ```
