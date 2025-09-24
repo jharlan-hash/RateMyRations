@@ -118,7 +118,6 @@ RateMyRations/
 │   └── ratings.db         # SQLite database (auto-created)
 ├── warm_cache.py          # Cache warming script for Gunicorn
 ├── start.sh              # Production startup script
-├── tests/                 # Test suite
 └── API_DOCUMENTATION.md   # Comprehensive API documentation
 ```
 
@@ -252,11 +251,11 @@ In `templates/about.html`, customize the content for your school:
 <p>RateMyRations helps students at Your School Name rate dining hall food...</p>
 ```
 
-### Testing Your Configuration
+### Verifying Your Configuration
 
-1. **Test menu fetching**:
+1. **Check menu fetching**:
    ```bash
-   python menu_parser.py
+   python -c "from ratemyrations.database import get_menus; print('Menu fetching works!')"
    ```
 
 2. **Check API responses**:
@@ -329,7 +328,7 @@ IGNORE_CATEGORIES = [
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test thoroughly
+4. Verify thoroughly
 5. Submit a pull request
 
 ## License
