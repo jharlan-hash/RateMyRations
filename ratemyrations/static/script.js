@@ -103,9 +103,6 @@ document.addEventListener("DOMContentLoaded", function() {
                     userRatings[foodId] = val;
                 }
                 
-                // Update community rating for this item immediately
-                updateCommunityRatingDisplay(starRatingContainer, val);
-                
                 // Update aggregates live - MUST WORK
                 updateLiveAggregates(starRatingContainer, val);
             };
@@ -154,10 +151,18 @@ document.addEventListener("DOMContentLoaded", function() {
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
                         console.log('Rating updated successfully');
                         
-                        // Update aggregates again now that userRatings is properly set
-                        updateLiveAggregates(starRatingContainer, newRating);
-                        
-                        // NO background fetch - it overwrites our community display
+                        // Fetch updated ratings to get true community averages
+                        fetchRatings().then(() => {
+                            // Update community rating display with true averages
+                            updateCommunityRatingDisplay(starRatingContainer, newRating);
+                            
+                            // Update aggregates again now that userRatings is properly set
+                            updateLiveAggregates(starRatingContainer, newRating);
+                        }).catch(error => {
+                            console.warn('Failed to fetch updated ratings:', error);
+                            // Still update aggregates even if fetch fails
+                            updateLiveAggregates(starRatingContainer, newRating);
+                        });
                     }).catch(error => {
                         console.error('Error updating rating:', error);
                         
@@ -273,7 +278,8 @@ document.addEventListener("DOMContentLoaded", function() {
             const parts = foodKey.split('_');
             const station = parts[1];
             const diningHall = parts[2];
-            const stationKey = `${station}_${diningHall}`;
+            const meal = parts[3];
+            const stationKey = `${station}_${diningHall}_${meal}`;
             
             if (!stationRatings[stationKey]) {
                 stationRatings[stationKey] = { total: 0, count: 0 };
@@ -415,8 +421,8 @@ document.addEventListener("DOMContentLoaded", function() {
                                 const items = data[diningHall][meal][station];
                                 
                                 // Show station rating if available (already filtered by menu)
-                                if (ratings.stations[`${station}_${diningHall}`]) {
-                                    const avgRating = ratings.stations[`${station}_${diningHall}`].avg_rating;
+                                if (ratings.stations[`${station}_${diningHall}_${meal}`]) {
+                                    const avgRating = ratings.stations[`${station}_${diningHall}_${meal}`].avg_rating;
                                     stationTitle.appendChild(renderStars(avgRating, null, false));
                                 }
                                 if (!items || items.length === 0) {
@@ -450,7 +456,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
                                     const foodRatingKey = `${item.name}_${station}_${diningHall}_${item.meal}`;
                                     const communityObj = ratings.foods[foodRatingKey] || { avg_rating: 0, rating_count: 0 };
-                                    console.log(`Food: ${item.name}, Key: ${foodRatingKey}, Rating: ${communityObj.avg_rating}, Count: ${communityObj.rating_count}`);
                                     const communityStars = renderStars(communityObj.avg_rating, null, false);
                                     communityRow.appendChild(communityStars);
                                     // Histogram tooltip
@@ -669,21 +674,49 @@ document.addEventListener("DOMContentLoaded", function() {
             const communityRow = li.querySelector('.community-rating-row');
             if (!communityRow) return;
             
+            // Get the food key to look up the true community rating
+            const foodName = li.querySelector('.food-item-name').textContent;
+            const station = li.closest('.station').querySelector('h4').textContent;
+            const diningHall = li.closest('.dining-hall').querySelector('h2').textContent;
+            const mealDiv = li.closest('.meal');
+            const mealId = mealDiv.id; // e.g., "meal-content-Burge-lunch"
+            const mealSlug = mealId.split('-').pop(); // Extract "lunch" from the ID
+            
+            const foodKey = `${foodName}_${station}_${diningHall}_${mealSlug}`;
+            const communityObj = ratings.foods[foodKey] || { avg_rating: 0, rating_count: 0 };
+            
             const starsInner = communityRow.querySelector('.stars-inner');
             const ratingValue = communityRow.querySelector('.rating-value');
             const countSpan = communityRow.querySelector('.rating-count');
             
             if (starsInner) {
-                const percentage = (newRating / 5) * 100;
+                const percentage = (communityObj.avg_rating / 5) * 100;
                 starsInner.style.width = `${percentage}%`;
             }
             
             if (ratingValue) {
-                ratingValue.textContent = `(${newRating.toFixed(2)})`;
+                ratingValue.textContent = `(${communityObj.avg_rating.toFixed(2)})`;
             }
             
             if (countSpan) {
-                countSpan.textContent = ` 1`; // Show as first rating
+                countSpan.textContent = ` ${communityObj.rating_count || 0}`;
+            }
+            
+            // Update histogram if it exists
+            const existingHistogram = communityRow.querySelector('.histogram');
+            if (existingHistogram && communityObj.dist) {
+                existingHistogram.remove();
+                const hist = document.createElement('div');
+                hist.classList.add('histogram');
+                const total = Object.values(communityObj.dist).reduce((a,b)=>a+b,0) || 1;
+                for (let i=1;i<=5;i++) {
+                    const bar = document.createElement('div');
+                    bar.classList.add('bar');
+                    bar.style.height = `${(communityObj.dist[i] / total) * 32 + 2}px`;
+                    bar.title = `${i}★: ${communityObj.dist[i]||0}`;
+                    hist.appendChild(bar);
+                }
+                communityRow.appendChild(hist);
             }
             
         } catch (e) {
@@ -929,7 +962,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function updateStationAggregate(diningHall, station) {
         const aggregates = computeVisibleAggregates();
-        const key = `${station}_${diningHall}`;
+        const key = `${station}_${diningHall}_${meal}`;
         const agg = aggregates.stations[key];
         if (!agg || agg.count === 0) return;
         const avg = agg.total / agg.count;
