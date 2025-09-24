@@ -102,6 +102,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 } else {
                     userRatings[foodId] = val;
                 }
+
+                // Update community rating for this item immediately
+                updateCommunityRatingDisplay(starRatingContainer, val);
                 
                 // Update aggregates live - MUST WORK
                 updateLiveAggregates(starRatingContainer, val);
@@ -151,18 +154,10 @@ document.addEventListener("DOMContentLoaded", function() {
                         localStorage.setItem("userRatings", JSON.stringify(userRatings));
                         console.log('Rating updated successfully');
                         
-                        // Fetch updated ratings to get true community averages
-                        fetchRatings().then(() => {
-                            // Update community rating display with true averages
-                            updateCommunityRatingDisplay(starRatingContainer, newRating);
-                            
-                            // Update aggregates again now that userRatings is properly set
-                            updateLiveAggregates(starRatingContainer, newRating);
-                        }).catch(error => {
-                            console.warn('Failed to fetch updated ratings:', error);
-                            // Still update aggregates even if fetch fails
-                            updateLiveAggregates(starRatingContainer, newRating);
-                        });
+                        // Update aggregates again now that userRatings is properly set
+                        updateLiveAggregates(starRatingContainer, newRating);
+                        
+                        // NO background fetch - it overwrites our community display
                     }).catch(error => {
                         console.error('Error updating rating:', error);
                         
@@ -674,51 +669,22 @@ document.addEventListener("DOMContentLoaded", function() {
             const communityRow = li.querySelector('.community-rating-row');
             if (!communityRow) return;
             
-            // Get the food key to look up the true community rating
-            const foodName = li.querySelector('.food-item-name').textContent;
-            const station = li.closest('.station').querySelector('h4').textContent;
-            const diningHall = li.closest('.dining-hall').querySelector('h2').textContent;
-            const mealDiv = li.closest('.meal');
-            const mealId = mealDiv.id; // e.g., "meal-content-Burge-lunch"
-            const mealSlug = mealId.split('-').pop(); // Extract "lunch" from the ID
-            
-            const foodKey = `${foodName}_${station}_${diningHall}_${mealSlug}`;
-            const communityObj = ratings.foods[foodKey] || { avg_rating: 0, rating_count: 0 };
-            
             const starsInner = communityRow.querySelector('.stars-inner');
             const ratingValue = communityRow.querySelector('.rating-value');
             const countSpan = communityRow.querySelector('.rating-count');
             
             if (starsInner) {
-                const percentage = (communityObj.avg_rating / 5) * 100;
+                const percentage = (newRating / 5) * 100;
                 starsInner.style.width = `${percentage}%`;
             }
             
             if (ratingValue) {
-                ratingValue.textContent = `(${communityObj.avg_rating.toFixed(2)})`;
+                ratingValue.textContent = `(${newRating.toFixed(2)})`;
             }
             
             if (countSpan) {
-                countSpan.textContent = ` ${communityObj.rating_count || 0}`;
+                countSpan.textContent = ` 1`; // Show as first rating
             }
-            
-            // Update histogram if it exists
-            const existingHistogram = communityRow.querySelector('.histogram');
-            if (existingHistogram && communityObj.dist) {
-                existingHistogram.remove();
-                const hist = document.createElement('div');
-                hist.classList.add('histogram');
-                const total = Object.values(communityObj.dist).reduce((a,b)=>a+b,0) || 1;
-                for (let i=1;i<=5;i++) {
-                    const bar = document.createElement('div');
-                    bar.classList.add('bar');
-                    bar.style.height = `${(communityObj.dist[i] / total) * 32 + 2}px`;
-                    bar.title = `${i}★: ${communityObj.dist[i]||0}`;
-                    hist.appendChild(bar);
-                }
-                communityRow.appendChild(hist);
-            }
-            
         } catch (e) {
             console.warn('Failed to update community rating display:', e);
         }
@@ -733,6 +699,8 @@ document.addEventListener("DOMContentLoaded", function() {
             
             // Get rating from userRatings (most reliable source)
             const rating = userRatings[foodId] ? parseInt(userRatings[foodId], 10) : 0;
+            console.log('ratings object:', ratings);
+            console.log('ratings.foods:', ratings.foods);
             
             if (rating > 0) {
                 total += rating;
