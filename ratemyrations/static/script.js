@@ -47,6 +47,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function fetchRatings() {
+        console.log('Fetching ratings for date:', dateInput.value);
         return fetch(`/api/ratings?date=${dateInput.value}`)
             .then(response => {
                 if (!response.ok) {
@@ -55,6 +56,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 return response.json();
             })
             .then(data => {
+                console.log('Raw ratings data from backend:', data);
                 ratings = data;
                 return data;
             })
@@ -136,11 +138,13 @@ document.addEventListener("DOMContentLoaded", function() {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ food_id: foodId, rating: newRating, user_id: browserId, date: dateInput.value })
                     }).then(response => {
+                        console.log('Rating submission response:', response.status, response.statusText);
                         if (!response.ok) {
                             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                         }
                         return response.json();
-                    }).then(() => {
+                    }).then(data => {
+                        console.log('Rating submission success:', data);
                         // Update userRatings immediately BEFORE any calculations
                         if (newRating === 0) {
                             delete userRatings[foodId];
