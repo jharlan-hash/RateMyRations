@@ -22,7 +22,7 @@ Check out my hosted version at https://rations.jacksovern.xyz
 
 - **Backend**: Flask (Python) with WSGI support
 - **Database**: SQLite with WAL mode and retry logic for concurrency
-- **Frontend**: HTML, CSS, JavaScript with localStorage for user data
+- **Frontend**: Vanilla HTML, CSS, JavaScript with localStorage for user data
 - **Deployment**: Gunicorn WSGI server with automated cache warming
 - **Caching**: In-memory LRU + TTL cache (supports Redis for distributed deployments)
 - **Rate Limiting**: Flask-Limiter with configurable limits
@@ -51,7 +51,7 @@ pip install -r requirements.txt
 
 3. Run the application:
 ```bash
-python -m ratemyrations.app
+./start.sh
 ```
 
 The application will be available at `http://localhost:8000`
@@ -116,12 +116,10 @@ RateMyRations/
 │   │   ├── about.html     # About page template
 │   │   └── admin.html     # Admin console template
 │   └── ratings.db         # SQLite database (auto-created)
-├── get_menus.py           # Utility script to open menu URLs
-├── menu_parser.py         # Standalone menu parsing utility
 ├── warm_cache.py          # Cache warming script for Gunicorn
 ├── start.sh              # Production startup script
-├── API_DOCUMENTATION.md   # Comprehensive API documentation
-└── urls                   # Menu URL references
+├── tests/                 # Test suite
+└── API_DOCUMENTATION.md   # Comprehensive API documentation
 ```
 
 ## Development
